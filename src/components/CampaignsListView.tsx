@@ -91,11 +91,7 @@ export const CampaignsListView: React.FC<CampaignsListViewProps> = ({ onNavigate
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Email Campaigns</h1>
-          <p className="text-sm text-slate-500">Track and manage all composed emails, drafts, and sent newsletters.</p>
-        </div>
+      <div className="flex justify-end">
         <button
           onClick={() => onNavigate('compose')}
           className="flex items-center justify-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-lg text-sm shadow transition-all"

@@ -119,16 +119,11 @@ export const SentHistoryView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Email Delivery Logs</h1>
-          <p className="text-sm text-slate-500">View live deliverability, analyze API errors, and retry failed recipients.</p>
-        </div>
-
+      <div className="flex justify-end">
         {selectedCampaignId !== 'all' && logs.some(l => l.campaignId === selectedCampaignId && l.status === 'failed') && (
           <button
             onClick={handleRetryFailed}
-            className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold shadow transition-all"
+            className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-650 text-white rounded-lg text-xs font-semibold shadow transition-all"
           >
             <RefreshCw className="w-4 h-4 animate-spin-once" /> Retry Failed Sends
           </button>

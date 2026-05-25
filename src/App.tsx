@@ -26,9 +26,10 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'react-hot-toast';
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 import { ViewMode } from './types';
-import { auth } from './firebase';
+import { auth, db } from './firebase';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
 // Modular Views
@@ -43,6 +44,7 @@ import { ProfileView } from './components/ProfileView';
 import { HelpView } from './components/HelpView';
 import AuthScreen from './components/AuthScreen';
 import { PublicPortal } from './components/PublicPortal';
+import { LoadingScreen } from './components/LoadingScreen';
 
 function AppContent() {
   const isPublicUnsubscribe = window.location.pathname === '/unsubscribe' || window.location.search.includes('unsubscribe=');
@@ -54,7 +56,76 @@ function AppContent() {
 
   const { user, profile, loading: authLoading, login, logout, updateProfile } = useAuth();
   
+  // Custom initialization loading stats
+  const [initProgress, setInitProgress] = useState(0);
+  const [showLoading, setShowLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState('Initializing Workspace');
+
+  useEffect(() => {
+    const messages = [
+      'Initializing Workspace',
+      'Connecting to Database',
+      'Loading Content Assets',
+      'Synchronizing Planner',
+      'Finalizing Setup'
+    ];
+    
+    let timer: any;
+    let currentStep = 0;
+
+    const interval = setInterval(() => {
+      setInitProgress(prev => {
+        let nextVal = prev;
+        if (authLoading) {
+          // Slowly increment to 88% while authenticating
+          if (prev < 88) {
+            nextVal = prev + Math.floor(Math.random() * 5) + 3;
+          }
+        } else {
+          // Jump to 100% when complete
+          if (prev < 100) {
+            nextVal = prev + Math.floor(Math.random() * 12) + 12;
+          } else {
+            clearInterval(interval);
+            timer = setTimeout(() => {
+              setShowLoading(false);
+            }, 350); // Fluid exit animation wait
+            return 100;
+          }
+        }
+        
+        const finalVal = nextVal >= 100 ? 100 : nextVal;
+        const step = Math.floor(finalVal / 20);
+        if (step > currentStep && step < messages.length) {
+          currentStep = step;
+          setLoadingMessage(messages[step]);
+        }
+        return finalVal;
+      });
+    }, 120);
+
+    return () => {
+      clearInterval(interval);
+      if (timer) clearTimeout(timer);
+    };
+  }, [authLoading]);
+
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
+
+  const getViewTitle = (mode: ViewMode) => {
+    switch (mode) {
+      case 'dashboard': return 'Email Mailer Dashboard';
+      case 'compose': return 'Compose Campaign';
+      case 'campaigns': return 'Campaigns';
+      case 'subscribers': return 'Subscribers';
+      case 'templates': return 'Templates';
+      case 'sent-history': return 'Sent History';
+      case 'settings': return 'Settings';
+      case 'profile': return 'My Profile';
+      case 'help': return 'Help & Support';
+      default: return 'Email Mailer';
+    }
+  };
   
   // 3-State Sidebar Mode
   const [sidebarMode, setSidebarMode] = useState<'full' | 'mini-hover' | 'mini-fixed'>('full');
@@ -97,18 +168,93 @@ function AppContent() {
     setViewMode(view);
   };
 
+  // Action to clear postId URL query param
+  const clearPostIdQueryParam = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('postId');
+    window.history.replaceState({}, '', url.pathname + url.search);
+  };
+
+  useEffect(() => {
+    if (!showLoading && user && profile && profile.status === 'active') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const postId = urlParams.get('postId');
+      if (postId) {
+        // Fetch post from Firestore
+        const fetchPost = async () => {
+          try {
+            const postRef = doc(db, 'posts', postId);
+            const postSnap = await getDoc(postRef);
+            if (postSnap.exists()) {
+              const postData = postSnap.data();
+              const contentTitle = postData.contentTitle || postData.title || 'Untitled Campaign';
+              const caption = postData.caption || postData.body || '';
+              const creatives = postData.creatives || [];
+
+              // Convert any graphics from the creatives list into accessible attachments and inline images
+              const attachmentsList: any[] = [];
+              let firstImgUrl = '';
+              if (Array.isArray(creatives)) {
+                creatives.forEach((creative, index) => {
+                  const url = typeof creative === 'string' ? creative : (creative?.url || '');
+                  if (url) {
+                    if (index === 0) {
+                      firstImgUrl = url;
+                    }
+                    attachmentsList.push({
+                      name: creative?.name || `asset_${index + 1}.png`,
+                      type: creative?.type || 'image/png',
+                      size: creative?.size || 102400,
+                      content: url
+                    });
+                  }
+                });
+              }
+
+              // Set the extracted "Caption" message as the draft HTML Body with editing enabled
+              let emailBody = `${caption.replace(/\n/g, '<br/>')}`;
+              if (firstImgUrl) {
+                // Include first image as an elegant inline media module block
+                emailBody += `\n\n<div style="margin: 24px 0; text-align: center;">\n  <img src="${firstImgUrl}" alt="${contentTitle}" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />\n</div>`;
+              }
+
+              const mappedCampaign = {
+                title: contentTitle,
+                subject: contentTitle, // Set extracted Content Title as Email Subject
+                body: emailBody,
+                status: 'draft',
+                type: 'Newsletter',
+                recipientTags: [],
+                importedPostId: postId, // Carry postId for two-way tracking
+                attachmentsJson: JSON.stringify(attachmentsList)
+              };
+
+              // Bypass default dashboard and load Compose Campaign directly at startup
+              handleNavigate('compose', mappedCampaign);
+              toast.success("Loaded campaign draft from Content Calendar!");
+            } else {
+              toast.error(`Campaign post document ID "${postId}" not found.`);
+            }
+          } catch (err) {
+            console.error("Error reading post from shared database:", err);
+            toast.error("Failed to load campaign data. You may not have access permission.");
+          } finally {
+            clearPostIdQueryParam();
+          }
+        };
+
+        fetchPost();
+      }
+    }
+  }, [showLoading, user, profile]);
+
   const getRoleLabel = (role?: string) => {
     if (!role) return 'Operations';
     return role.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
   };
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center animate-fade-in text-center">
-        <Loader2 className="w-10 h-10 text-amber-500 animate-spin mb-4" />
-        <p className="text-sm text-slate-500 font-semibold font-mono">Initializing Email Mailer Engine...</p>
-      </div>
-    );
+  if (showLoading) {
+    return <LoadingScreen progress={initProgress} loadingMessage={loadingMessage} />;
   }
 
   // Auth Guard
@@ -135,7 +281,7 @@ function AppContent() {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
         <div className="w-16 h-16 bg-amber-50 dark:bg-amber-950/30 rounded-full flex items-center justify-center mb-6 border border-amber-300">
-          <Sparkles className="w-8 h-8 text-amber-500" />
+          <Mail className="w-8 h-8 text-amber-500" />
         </div>
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Registration Pending Approval</h2>
         <p className="text-slate-500 dark:text-slate-400 max-w-md text-sm">Welcome, <strong className="text-slate-900 dark:text-white">{profile.displayName}</strong>! Your account requires verification from a marketing supervisor before you can access the newsletter sender.</p>
@@ -157,22 +303,40 @@ function AppContent() {
         {/* Brand header */}
         <div 
           onClick={() => handleNavigate('dashboard')}
-          className={`p-5 flex items-center cursor-pointer hover:bg-white/5 transition-colors group ${isSidebarMini ? 'justify-center' : 'gap-3'} border-b border-[#121c32]`}
+          className={`pt-[30px] pb-[24px] pl-[24px] pr-5 flex items-center cursor-pointer hover:bg-white/5 transition-colors group ${isSidebarMini ? 'justify-center' : 'gap-3'} border-b border-[#121c32]`}
         >
-          <div className="relative w-12 h-12 bg-white rounded-2xl flex items-center justify-center p-1.5 shadow-lg shrink-0 group-hover:scale-105 transition-transform duration-300">
-            <img src="/img/MAIN (1).png" alt="STLAF Logo" className="w-full h-full object-contain" />
-            <div className="absolute -top-1.5 -right-1.5 bg-amber-500 text-slate-900 p-0.5 rounded-full border-2 border-[#1b2a4a] flex items-center justify-center shadow">
-              <Sparkles className="w-2.5 h-2.5 text-slate-950 fill-current" />
+          <div className="relative shrink-0 group-hover:scale-105 transition-transform duration-300">
+            {/* 1. MAIN LOGO WRAPPER */}
+            {/* - "w-12 h-12" renders it at exactly 48px by 48px */}
+            <div className="w-12 h-12 flex items-center justify-center">
+              <img 
+                src="/img/MAIN (1).png" 
+                alt="Logo" 
+                className="w-full h-full object-contain rounded-xl shadow-lg border border-white/10" 
+                /* "rounded-xl" specifies a border-radius of 12px (0.75rem) */
+              />
+            </div>
+
+            {/* 2. OVERLAPPING AMBER MAIL BADGE */}
+            {/* - "absolute -right-1.5 -top-1.5" positions the badge overlap */}
+            {/* - "rounded-lg" specifies a border-radius of 8px (0.5rem) */}
+            <div className="absolute -right-1.5 -top-1.5 bg-amber-500 rounded-lg p-1 shadow-sm border border-amber-400 z-10">
+              <Mail className="w-3 h-3 text-white" />
             </div>
           </div>
           {isSidebarExpanded && (
             <motion.div
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              className="leading-tight shrink-0 overflow-hidden ml-1"
+              className="overflow-hidden whitespace-nowrap ml-1"
             >
-              <h2 className="text-sm font-bold text-white tracking-tight group-hover:text-amber-500 transition-colors">Marketing Portal</h2>
-              <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase block">MARKETING DEPT</span>
+              {/* 3. MARKETING PORTAL HEADER LABEL */}
+              <h2 className="text-sm font-bold text-white leading-tight group-hover:text-amber-500 transition-colors pl-0">
+                Marketing Portal
+              </h2>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold font-sans">
+                Newsletter
+              </p>
             </motion.div>
           )}
         </div>
@@ -214,7 +378,7 @@ function AppContent() {
             }`}
             title={isSidebarMini ? "Campaigns" : ""}
           >
-            <Compass className={`w-5 h-5 shrink-0 ${viewMode === 'campaigns' ? 'text-[#dcae44]' : 'text-slate-400'}`} />
+            <Mail className={`w-5 h-5 shrink-0 ${viewMode === 'campaigns' ? 'text-[#dcae44]' : 'text-slate-400'}`} />
             {isSidebarExpanded && <span className="whitespace-nowrap">Campaigns</span>}
           </button>
 
@@ -494,8 +658,8 @@ function AppContent() {
 
             <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block" />
 
-            <span className="text-xs font-bold text-slate-400 dark:text-slate-500 font-mono hidden md:inline-block uppercase tracking-wider">
-              Department: {profile.department}
+            <span className="text-lg font-bold text-slate-900 dark:text-white tracking-tight ml-1.5">
+              {getViewTitle(viewMode)}
             </span>
           </div>
 

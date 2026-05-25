@@ -14,6 +14,7 @@ import { collection, onSnapshot, doc, setDoc, addDoc, deleteDoc } from 'firebase
 import { db, auth } from '../firebase';
 import { EmailTemplate } from '../types';
 import { toast } from 'react-hot-toast';
+import { ConfirmationModal } from './ConfirmationModal';
 
 interface TemplatesViewProps {
   onNavigate: (view: any, data?: any) => void;
@@ -34,6 +35,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onNavigate }) => {
 
   // Preview State
   const [previewTemplate, setPreviewTemplate] = useState<EmailTemplate | null>(null);
+  const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'emailTemplates'), (snapshot) => {
@@ -102,12 +104,17 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onNavigate }) => {
     }
   };
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
+  const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm("Are you sure you want to delete this template?")) return;
+    setDeleteTemplateId(id);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTemplateId) return;
     try {
-      await deleteDoc(doc(db, 'emailTemplates', id));
-      toast.success("Template deleted");
+      await deleteDoc(doc(db, 'emailTemplates', deleteTemplateId));
+      toast.success("Template deleted successfully");
+      setDeleteTemplateId(null);
     } catch (err: any) {
       toast.error("Failed to delete template");
     }
@@ -132,11 +139,7 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onNavigate }) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Email Layout Templates</h1>
-          <p className="text-sm text-slate-500">Create reusable newsletters, promos, or announcements with placeholder support.</p>
-        </div>
+      <div className="flex justify-end">
         <button
           onClick={openAddModal}
           className="flex items-center justify-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 font-semibold text-white rounded-lg text-xs"
@@ -355,6 +358,18 @@ export const TemplatesView: React.FC<TemplatesViewProps> = ({ onNavigate }) => {
           </div>
         </div>
       )}
+
+      {/* Delete template confirmation modal */}
+      <ConfirmationModal
+        isOpen={deleteTemplateId !== null}
+        onClose={() => setDeleteTemplateId(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Email Template"
+        message="Are you sure you want to permanently delete this email template layout? This action cannot be undone."
+        confirmText="Delete Layout"
+        cancelText="Keep Layout"
+        isDanger={true}
+      />
     </div>
   );
 };

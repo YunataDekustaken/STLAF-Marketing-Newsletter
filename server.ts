@@ -189,46 +189,82 @@ async function startServer() {
     }
   }
 
+  function htmlToPlainText(html: string): string {
+    let text = html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+    text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+    text = text.replace(/<li[^>]*>/gi, '\n* ');
+    text = text.replace(/<\/p>|<br\s*\/?>|<\/div>|<\/tr>/gi, '\n');
+    text = text.replace(/<[^>]+>/g, '');
+    text = text.replace(/&nbsp;/g, ' ')
+               .replace(/&amp;/g, '&')
+               .replace(/&lt;/g, '<')
+               .replace(/&gt;/g, '>')
+               .replace(/&quot;/g, '"')
+               .replace(/&#39;/g, "'");
+    text = text.replace(/\n\s*\n\s*\n/g, '\n\n');
+    return text.trim();
+  }
+
   function buildMimeMessage(to: string, from: string, subject: string, bodyHtml: string, attachments: any[] = []) {
     const utf8Subject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
-    
+    const altBoundary = `----=_Part_Alt_${Math.random().toString(36).substring(2)}${Date.now().toString(36)}`;
+    const plainText = htmlToPlainText(bodyHtml);
+
+    // Build the alternative parts (plain and HTML versions)
+    const alternativeParts = [
+      `--${altBoundary}`,
+      `Content-Type: text/plain; charset=UTF-8`,
+      `Content-Transfer-Encoding: 7bit`,
+      ``,
+      plainText,
+      ``,
+      `--${altBoundary}`,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: 7bit`,
+      ``,
+      bodyHtml,
+      ``,
+      `--${altBoundary}--`
+    ].join('\r\n');
+
     if (!attachments || attachments.length === 0) {
-      const messageParts = [
+      const headerParts = [
         `From: ${from}`,
         `To: ${to}`,
         `Subject: ${utf8Subject}`,
         `MIME-Version: 1.0`,
-        `Content-Type: text/html; charset=utf-8`,
-        `Content-Transfer-Encoding: 7bit`,
-        ``,
-        bodyHtml
-      ];
-      const message = messageParts.join('\n');
-      return Buffer.from(message)
+        `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+        ``
+      ].join('\r\n');
+
+      const fullMessage = headerParts + alternativeParts;
+
+      return Buffer.from(fullMessage)
         .toString('base64')
         .replace(/\+/g, '-')
         .replace(/\//g, '_')
         .replace(/=+$/, '');
     }
 
-    const boundary = `----=_Part_${Math.random().toString(36).substring(2)}${Date.now().toString(36)}`;
-    
+    // With attachments: wrapped in multipart/mixed boundary
+    const mixedBoundary = `----=_Part_Mixed_${Math.random().toString(36).substring(2)}${Date.now().toString(36)}`;
+
     const headerParts = [
       `From: ${from}`,
       `To: ${to}`,
       `Subject: ${utf8Subject}`,
       `MIME-Version: 1.0`,
-      `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`,
       ``
-    ];
+    ].join('\r\n');
 
-    const bodyParts = [
-      `--${boundary}`,
-      `Content-Type: text/html; charset=utf-8`,
-      `Content-Transfer-Encoding: 7bit`,
+    const alternativePartBlock = [
+      `--${mixedBoundary}`,
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
       ``,
-      bodyHtml
-    ];
+      alternativeParts,
+      ``
+    ].join('\r\n');
 
     const attachmentParts = attachments.map(att => {
       let base64Data = att.content || "";
@@ -240,7 +276,7 @@ async function startServer() {
       }
       
       return [
-        `--${boundary}`,
+        `--${mixedBoundary}`,
         `Content-Type: ${att.type || 'application/octet-stream'}; name="${att.name}"`,
         `Content-Disposition: attachment; filename="${att.name}"`,
         `Content-Transfer-Encoding: base64`,
@@ -248,14 +284,14 @@ async function startServer() {
         base64Data.replace(/(.{76})/g, '$1\r\n'),
         ``
       ].join('\r\n');
-    });
+    }).join('');
 
-    const footer = `--${boundary}--`;
+    const footer = `--${mixedBoundary}--`;
 
     const fullMessage = [
-      headerParts.join('\r\n'),
-      bodyParts.join('\r\n'),
-      ...attachmentParts,
+      headerParts,
+      alternativePartBlock,
+      attachmentParts,
       footer
     ].join('\r\n');
 
@@ -457,7 +493,7 @@ async function startServer() {
           if (/{{unsubscribe}}/i.test(body)) {
             body = body.replace(/{{unsubscribe}}/gi, unsubscribeUrl);
           } else {
-            body += `
+            const footerHtml = `
               <br/><br/>
               <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;" />
               <p style="font-size:12px;color:#64748b;font-family:sans-serif;text-align:center;line-height:1.5;">
@@ -466,6 +502,13 @@ async function startServer() {
                 <a href="${unsubscribeUrl}" style="color:#c9a84c;text-decoration:underline;font-weight:600;">unsubscribe instantly here</a>.
               </p>
             `;
+            if (body.includes("</body>")) {
+              body = body.replace("</body>", `${footerHtml}</body>`);
+            } else if (body.includes("</html>")) {
+              body = body.replace("</html>", `${footerHtml}</html>`);
+            } else {
+              body += footerHtml;
+            }
           }
 
           try {
@@ -525,6 +568,65 @@ async function startServer() {
       const existing = subscribers.find((s: any) => s.email && s.email.toLowerCase() === email.toLowerCase());
       const finalTags = Array.isArray(tags) ? tags : ["Newsletter"];
 
+      // Setup verification properties
+      const verificationToken = Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+      const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours expiry
+
+      // Calculate verification URL
+      const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+      const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
+      let hostUrl = `${protocol}://${host}`;
+      if (hostUrl.includes("run.app") && !hostUrl.startsWith("https://")) {
+        hostUrl = hostUrl.replace("http://", "https://");
+      }
+      const verificationUrl = `${hostUrl}/api/public/verify?token=${verificationToken}&email=${encodeURIComponent(email)}`;
+
+      // Attempt to send confirmation email via Gmail config if connected
+      let emailSent = false;
+      const config = await getGmailConfig();
+      const isGmailConnected = config && config.connected && config.authorizedEmail;
+
+      // Always require verification (status: "pending") to enforce double opt-in GDPR compliance
+      const targetStatus = "pending";
+
+      if (isGmailConnected) {
+        try {
+          const accessToken = await getOrRefreshAccessToken(config);
+          const subject = "Please verify your subscription";
+          const body = `
+            <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+              <h2 style="color: #0f172a; margin-top: 0; font-size: 20px; font-weight: 700;">Welcome to STLAF Portal, ${name}!</h2>
+              <p style="color: #334155; font-size: 14px; line-height: 1.6;">
+                Thank you for subscribing. To secure your email and activate your subscriber dashboard, please confirm your interest by clicking the button below:
+              </p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${verificationUrl}" style="background-color: #dcae44; color: #000000; font-weight: bold; font-size: 14px; text-decoration: none; padding: 12px 28px; border-radius: 10px; display: inline-block; box-shadow: 0 3px 5px rgba(220,174,68,0.3);">
+                  Confirm Subscription
+                </a>
+              </div>
+              <p style="color: #64748b; font-size: 12px; line-height: 1.5; background-color: #f8fafc; padding: 10px; border-radius: 6px;">
+                Link not working? Copy and paste this directly into your browser address bar:<br/>
+                <a href="${verificationUrl}" style="color: #bf8d1a; text-decoration: underline; break-all: break-all; font-family: monospace; font-size: 11px;">${verificationUrl}</a>
+              </p>
+              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+              <p style="color: #94a3b8; font-size: 11px; line-height: 1.4;">
+                This link will expire in 24 hours. If you did not make this subscription request, you may safely ignore this message—no active subscription was created.
+              </p>
+            </div>
+          `;
+          const rawMessage = buildMimeMessage(email, config.authorizedEmail, subject, body);
+          await axios.post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            { raw: rawMessage },
+            { headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" } }
+          );
+          emailSent = true;
+          console.log(`[PUBLIC SUBSCRIPTION] Verification link sent to ${email}`);
+        } catch (mailErr: any) {
+          console.error("[PUBLIC MAIL SEND ERR] Failed to send verification mail:", mailErr.response?.data || mailErr.message);
+        }
+      }
+
       if (existing) {
         // Merge tags
         let subTags: string[] = [];
@@ -542,32 +644,106 @@ async function startServer() {
         const updated = {
           ...existing,
           name: name || existing.name,
-          status: "active",
-          tags: mergedTags
+          status: targetStatus,
+          tags: mergedTags,
+          verificationToken,
+          verificationExpiresAt
         };
 
         const patchUrl = getFirestoreRestUrl(`subscribers/${existing.id}`);
         await axios.patch(patchUrl, toFirestoreJSON(updated));
-        console.log(`[PUBLIC SUBSCRIPTION] Re-activated/Updated subscriber: ${email}`);
+        console.log(`[PUBLIC SUBSCRIPTION] Updated subscriber to pending (unverified) state: ${email}`);
       } else {
         // Create new subscriber
         const newSub = {
           name,
           email,
-          status: "active",
+          status: targetStatus,
           tags: finalTags,
           addedAt: new Date().toISOString(),
-          addedBy: "public-portal"
+          addedBy: "public-portal",
+          verificationToken,
+          verificationExpiresAt
         };
         const postUrl = getFirestoreRestUrl("subscribers");
         await axios.post(postUrl, toFirestoreJSON(newSub));
-        console.log(`[PUBLIC SUBSCRIPTION] New direct subscriber added: ${email}`);
+        console.log(`[PUBLIC SUBSCRIPTION] Added new unverified pending subscriber: ${email}`);
       }
 
-      res.json({ success: true });
+      res.json({ 
+        success: true, 
+        emailSent, 
+        verificationNeeded: true,
+        // Provided as developer option if Gmail config is not connected
+        devVerificationUrl: verificationUrl 
+      });
     } catch (err: any) {
       console.error("[PUBLIC SUBSCRIPTION ERR]", err.response?.data || err.message);
       res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Public verification route to activate subscription
+  app.get("/api/public/verify", async (req, res) => {
+    const { token, email } = req.query;
+    if (!token || !email) {
+      return res.redirect(`${lastSeenHostUrl}/subscribe?verified=invalid`);
+    }
+
+    try {
+      // 1. Fetch matching subscriber
+      const subUrl = getFirestoreRestUrl("subscribers", "pageSize=300");
+      const subResp = await axios.get(subUrl);
+      const allDocs = subResp.data?.documents || [];
+      const subscribers = allDocs.map((d: any) => {
+        const sId = d.name.split("/").pop();
+        return { id: sId, ...fromFirestoreJSON(d) };
+      });
+
+      const existing = subscribers.find((s: any) => s.email && s.email.toLowerCase() === (email as string).toLowerCase());
+      if (!existing) {
+        return res.redirect(`${lastSeenHostUrl}/subscribe?verified=invalid`);
+      }
+
+      // Check status & token
+      if (existing.status === 'active') {
+        // Already verified and active! Just send them back successfully
+        return res.redirect(`${lastSeenHostUrl}/subscribe?verified=success&email=${encodeURIComponent(existing.email)}`);
+      }
+
+      if (existing.verificationToken !== token) {
+        return res.redirect(`${lastSeenHostUrl}/subscribe?verified=invalid`);
+      }
+
+      // Check expiration
+      if (existing.verificationExpiresAt) {
+        const expiresAt = new Date(existing.verificationExpiresAt);
+        if (isNaN(expiresAt.getTime()) || expiresAt < new Date()) {
+          // Expired. Remove subscriber so they can try again fresh!
+          const deleteUrl = getFirestoreRestUrl(`subscribers/${existing.id}`);
+          await axios.delete(deleteUrl);
+          return res.redirect(`${lastSeenHostUrl}/subscribe?verified=expired`);
+        }
+      }
+
+      // Activate subscriber
+      const updated = {
+        ...existing,
+        status: "active",
+        verifiedAt: new Date().toISOString()
+      };
+      // Delete verification token properties
+      delete updated.verificationToken;
+      delete updated.verificationExpiresAt;
+
+      const patchUrl = getFirestoreRestUrl(`subscribers/${existing.id}`);
+      await axios.patch(patchUrl, toFirestoreJSON(updated));
+
+      console.log(`[PUBLIC SUBSCRIPTION] Verified subscriber: ${email}`);
+      return res.redirect(`${lastSeenHostUrl}/subscribe?verified=success&email=${encodeURIComponent(existing.email)}`);
+    } catch (err: any) {
+      console.error("[PUBLIC VERIFICATION ERR]", err.message);
+      return res.redirect(`${lastSeenHostUrl}/subscribe?verified=invalid`);
     }
   });
 
@@ -762,7 +938,7 @@ async function startServer() {
         if (/{{unsubscribe}}/i.test(body)) {
           body = body.replace(/{{unsubscribe}}/gi, unsubscribeUrl);
         } else {
-          body += `
+          const footerHtml = `
             <br/><br/>
             <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;" />
             <p style="font-size:12px;color:#64748b;font-family:sans-serif;text-align:center;line-height:1.5;">
@@ -771,6 +947,13 @@ async function startServer() {
               <a href="${unsubscribeUrl}" style="color:#c9a84c;text-decoration:underline;font-weight:600;">unsubscribe instantly here</a>.
             </p>
           `;
+          if (body.includes("</body>")) {
+            body = body.replace("</body>", `${footerHtml}</body>`);
+          } else if (body.includes("</html>")) {
+            body = body.replace("</html>", `${footerHtml}</html>`);
+          } else {
+            body += footerHtml;
+          }
         }
 
         try {
@@ -813,14 +996,46 @@ async function startServer() {
     }
   }
 
-  // Start periodic scheduler checks
+  async function cleanExpiredPendingSubscribers() {
+    try {
+      const subUrl = getFirestoreRestUrl("subscribers", "pageSize=300");
+      const subResp = await axios.get(subUrl);
+      const allDocs = subResp.data?.documents || [];
+      const subscribers = allDocs.map((d: any) => {
+        const sId = d.name.split("/").pop();
+        return { id: sId, ...fromFirestoreJSON(d) };
+      });
+
+      const now = new Date();
+      for (const sub of subscribers) {
+        if (sub.status === "pending" && sub.verificationExpiresAt) {
+          const expiresAt = new Date(sub.verificationExpiresAt);
+          if (!isNaN(expiresAt.getTime()) && expiresAt < now) {
+            // Remove from active/pending subscribers as they failed to verify within 24hr window
+            const deleteUrl = getFirestoreRestUrl(`subscribers/${sub.id}`);
+            await axios.delete(deleteUrl);
+            console.log(`[CLEANER] Automatically removed expired pending subscriber: ${sub.email} (${sub.id})`);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error("[CLEANER ERR] Error running background subscriber cleanup:", e.message);
+    }
+  }
+
+  // Start periodic scheduler checks & subscriber cleanups
   setInterval(async () => {
     try {
       await checkAndSendScheduledCampaigns();
     } catch (e: any) {
       console.error("[SCHEDULER INTERVAL ERR] Error in scheduled run:", e.message);
     }
-  }, 15000); // Trigger check every 15 seconds for quick response!
+    try {
+      await cleanExpiredPendingSubscribers();
+    } catch (e: any) {
+      console.error("[SCHEDULER CLEANER ERR] Error in background subscriber cleanup:", e.message);
+    }
+  }, 15000); // Trigger check and cleanup every 15 seconds for hot updates!
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

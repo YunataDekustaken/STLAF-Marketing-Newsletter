@@ -44,9 +44,14 @@ export interface Subscriber {
   email: string;
   name: string;
   tags: string[];
-  status: 'active' | 'unsubscribed' | 'bounced';
+  status: 'active' | 'pending' | 'unsubscribed' | 'bounced';
   addedAt: string;
   addedBy: string;
+  unsubscribeReason?: string;
+  unsubscribedAt?: string;
+  verifiedAt?: string;
+  verificationToken?: string;
+  verificationExpiresAt?: string;
 }
 
 export interface EmailTemplate {

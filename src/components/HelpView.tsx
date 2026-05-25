@@ -467,15 +467,7 @@ After completing these steps, go back to the "Admin" tab in this application and
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
           >
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-              <div>
-                <h2 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tighter flex items-center gap-3">
-                  <HelpCircle className="w-10 h-10 text-indigo-600 dark:text-indigo-400" />
-                  Support Center
-                </h2>
-                <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">Resources and direct lines to your marketing supervisors.</p>
-              </div>
-
+            <div className="flex justify-end mb-6">
               <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl w-fit">
                 <button 
                   onClick={() => setActiveTab('guide')}

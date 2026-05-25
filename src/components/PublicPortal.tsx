@@ -41,13 +41,27 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ mode }) => {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
+  const [devVerificationUrl, setDevVerificationUrl] = useState<string | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<'none' | 'success' | 'expired' | 'invalid'>('none');
 
-  // Auto-detect email from query string for unsubscribe mode
+  // Auto-detect email and verification params from query string
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const emailParam = params.get('email');
     if (emailParam) {
       setEmail(emailParam);
+    }
+    
+    const verifiedParam = params.get('verified');
+    if (verifiedParam) {
+      if (verifiedParam === 'success') {
+        setVerificationStatus('success');
+      } else if (verifiedParam === 'expired') {
+        setVerificationStatus('expired');
+      } else if (verifiedParam === 'invalid') {
+        setVerificationStatus('invalid');
+      }
     }
   }, [mode]);
 
@@ -75,6 +89,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ mode }) => {
       });
 
       if (resp.data.success) {
+        setEmailSent(!!resp.data.emailSent);
+        setDevVerificationUrl(resp.data.devVerificationUrl || null);
         setSuccess(true);
       } else {
         setErrorMessage(resp.data.error || "Failed to subscribe. Please try again.");
@@ -146,38 +162,169 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ mode }) => {
       {/* Main Action Window Card */}
       <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden p-6 sm:p-8 space-y-6">
         
-        {success ? (
+        {verificationStatus !== 'none' ? (
+          /* VERIFICATION RESULT PANEL */
+          <div className="space-y-6 text-center animate-fade-in py-4">
+            {verificationStatus === 'success' && (
+              <>
+                <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-emerald-100 dark:bg-emerald-950/30 border border-emerald-300">
+                  <Check className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                    Subscription Verified!
+                  </h2>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm max-w-sm mx-auto leading-relaxed">
+                    Your email address <strong>{email || 'registered address'}</strong> has been verified successfully. Your subscription is now fully active!
+                  </p>
+                </div>
+
+                <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => {
+                      setVerificationStatus('none');
+                      setSuccess(false);
+                      window.history.pushState({}, '', '/subscribe');
+                      window.location.reload();
+                    }}
+                    className="w-full inline-flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-xl text-sm font-semibold text-slate-900 bg-amber-400 hover:bg-amber-500 transition-all font-sans cursor-pointer"
+                  >
+                    Return to subscriber portal
+                  </button>
+                </div>
+              </>
+            )}
+
+            {verificationStatus === 'expired' && (
+              <>
+                <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-amber-100 dark:bg-amber-950/30 border border-amber-300">
+                  <AlertCircle className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+                </div>
+                
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                    Verification Expired
+                  </h2>
+                  <p className="text-slate-500 dark:text-slate-450 text-sm max-w-sm mx-auto leading-relaxed">
+                    This verification link has expired. To maintain clean subscriber lists, unverified registrations are automatically deleted after 24 hours. Please re-subscribe to trigger a new link.
+                  </p>
+                </div>
+
+                <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => {
+                      setVerificationStatus('none');
+                      setSuccess(false);
+                      window.history.pushState({}, '', '/subscribe');
+                      window.location.reload();
+                    }}
+                    className="w-full inline-flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-xl text-sm font-semibold text-slate-900 bg-amber-450 hover:bg-amber-500 transition-all font-sans cursor-pointer"
+                  >
+                    Subscribe Again
+                  </button>
+                </div>
+              </>
+            )}
+
+            {verificationStatus === 'invalid' && (
+              <>
+                <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-rose-100 dark:bg-rose-950/30 border border-rose-300">
+                  <AlertCircle className="h-8 w-8 text-rose-600 dark:text-rose-450" />
+                </div>
+                
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                    Invalid Verification URL
+                  </h2>
+                  <p className="text-slate-500 dark:text-slate-450 text-sm max-w-sm mx-auto leading-relaxed">
+                    We couldn't verify this email subscription. The token is invalid, corrupted, or have already been fully activated. Please check the email details and try again.
+                  </p>
+                </div>
+
+                <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => {
+                      setVerificationStatus('none');
+                      setSuccess(false);
+                      window.history.pushState({}, '', '/subscribe');
+                      window.location.reload();
+                    }}
+                    className="w-full inline-flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-xl text-sm font-semibold text-white bg-rose-505 hover:bg-rose-600 transition-all font-sans cursor-pointer"
+                  >
+                    Retry Subscription Setup
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : success ? (
           /* SUCCESS STATE PANEL */
           <div className="space-y-6 text-center animate-fade-in py-4">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-emerald-100 dark:bg-emerald-950/30 border border-emerald-300">
-              <Check className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-slate-800 dark:text-white">
-                {mode === 'subscribe' ? 'Subscription Successful!' : 'Successfully Opted-Out'}
-              </h2>
-              <p className="text-slate-500 dark:text-slate-450 text-sm max-w-sm mx-auto leading-relaxed">
-                {mode === 'subscribe' ? (
-                  <>We've added <strong>{email}</strong> to our active distribution group. Thank you for joining our community!</>
-                ) : (
-                  <><strong>{email}</strong> has been removed from all marketing campaigns. We are sorry to see you go.</>
-                )}
-              </p>
-            </div>
+            {mode === 'subscribe' ? (
+              <>
+                <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-amber-100 dark:bg-amber-950/30 border border-amber-300 animate-pulse">
+                  <Mail className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+                </div>
+                
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-bold text-slate-800 dark:text-white">
+                    Verification Needed!
+                  </h2>
+                  <p className="text-slate-500 dark:text-slate-450 text-sm max-w-sm mx-auto leading-relaxed">
+                    We've sent a verification link to <strong>{email}</strong>. Please check your inbox and click this link within 24 hours to confirm your subscription.
+                  </p>
+                </div>
 
-            <div className="pt-6 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-3">
-              {mode === 'unsubscribe' ? (
-                <button
-                  onClick={handleResubscribe}
-                  className="w-full inline-flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-xl text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 focus:outline-none transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  <Sparkles className="w-4 h-4" /> Changed your mind? Re-subscribe
-                </button>
-              ) : (
-                <p className="text-xs text-slate-400">You may update your preferences or unsubscribe at any time using links provided inside emails.</p>
-              )}
-            </div>
+                {devVerificationUrl && (
+                  <div className="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 text-left space-y-2">
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400">
+                      <Fingerprint className="w-3 h-3" /> Developer Sandbox
+                    </span>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-normal">
+                      {!emailSent 
+                        ? "Admin Note: Gmail is not yet configured or authorised. Use the sandbox shortcut below to manually complete the double opt-in verification cycle without wait:" 
+                        : "For convenience in development, you can also use this link to complete the verification simulation:"
+                      }
+                    </p>
+                    <a
+                      href={devVerificationUrl}
+                      className="inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-bold underline hover:text-amber-700 break-all"
+                    >
+                      Verify Subscription Manually &rarr;
+                    </a>
+                  </div>
+                )}
+
+                <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
+                  <p className="text-xs text-slate-400">Unverified subscriptions automatically expire and are cleared from the queue after 24 hours.</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-emerald-100 dark:bg-emerald-950/30 border border-emerald-300">
+                  <Check className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-bold text-slate-800 dark:text-white">
+                    Successfully Opted-Out
+                  </h2>
+                  <p className="text-slate-500 dark:text-slate-450 text-sm max-w-sm mx-auto leading-relaxed">
+                    <strong>{email}</strong> has been removed from all marketing campaigns. We are sorry to see you go.
+                  </p>
+                </div>
+
+                <div className="pt-6 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-3">
+                  <button
+                    onClick={handleResubscribe}
+                    className="w-full inline-flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-xl text-sm font-semibold text-white bg-amber-500 hover:bg-amber-600 focus:outline-none transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
+                  >
+                    <Sparkles className="w-4 h-4" /> Changed your mind? Re-subscribe
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         ) : (
           /* ACTIVE FORM STAGE */

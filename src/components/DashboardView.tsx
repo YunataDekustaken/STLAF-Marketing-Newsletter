@@ -124,21 +124,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, userRo
   return (
     <div className="space-y-6">
       {/* Welcome & Action Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Email Mailer Dashboard</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Send campaigns and custom newsletters instantly via secure Gmail connection.</p>
-        </div>
-        
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => onNavigate('compose')}
-            className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-medium rounded-lg text-sm shadow-sm transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            New Campaign
-          </button>
-        </div>
+      <div className="flex justify-end">
+        <button
+          onClick={() => onNavigate('compose')}
+          className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-medium rounded-lg text-sm shadow-sm transition-all"
+        >
+          <Plus className="w-4 h-4" />
+          New Campaign
+        </button>
       </div>
 
       {/* Gmail Connection Status Block */}
