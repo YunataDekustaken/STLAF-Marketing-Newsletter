@@ -17,7 +17,8 @@ import {
   Clock,
   X,
   Play,
-  CheckSquare
+  CheckSquare,
+  Download
 } from 'lucide-react';
 import { collection, onSnapshot, deleteDoc, doc, addDoc, updateDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -149,6 +150,70 @@ export const CampaignsListView: React.FC<CampaignsListViewProps> = ({ onNavigate
     }
   };
 
+  const handleBulkDownload = () => {
+    if (selectedCampaignIds.length === 0) return;
+
+    const selectedList = campaigns.filter(c => selectedCampaignIds.includes(c.id));
+    
+    // Define CSV columns
+    const headers = [
+      'ID',
+      'Title',
+      'Subject',
+      'Type',
+      'Status',
+      'Recipient Tags',
+      'Sent Count',
+      'Failed Count',
+      'Created By',
+      'Created At',
+      'Scheduled At',
+      'Sent At'
+    ];
+    
+    // Escape helper to safely format strings for CSV
+    const escapeCSV = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+    
+    const rows = selectedList.map(campaign => [
+      campaign.id,
+      campaign.title,
+      campaign.subject,
+      campaign.type,
+      campaign.status,
+      Array.isArray(campaign.recipientTags) ? campaign.recipientTags.join(', ') : '',
+      campaign.sentCount || 0,
+      campaign.failedCount || 0,
+      campaign.createdBy,
+      campaign.createdAt,
+      campaign.scheduledAt || '',
+      campaign.sentAt || ''
+    ]);
+    
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(escapeCSV).join(','))
+    ].join('\n');
+    
+    // Trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `selected_campaigns_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success(`Downloaded metadata for ${selectedList.length} campaign(s)!`);
+  };
+
   const filteredCampaigns = campaigns.filter(c => 
     c.title?.toLowerCase().includes(searchQuery.toLowerCase()) || 
     c.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -176,25 +241,6 @@ export const CampaignsListView: React.FC<CampaignsListViewProps> = ({ onNavigate
       <div className="flex justify-between items-center bg-transparent">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">Email Campaigns</h2>
-          {/* Toggle Bulk Edit Mode Button */}
-          <button
-            onClick={() => {
-              const nextMode = !isBulkModeActive;
-              setIsBulkModeActive(nextMode);
-              if (!nextMode) {
-                setSelectedCampaignIds([]);
-              }
-            }}
-            className={`flex items-center justify-center p-2 rounded-[14px] border transition-all cursor-pointer shadow-sm select-none ${
-              isBulkModeActive
-                ? 'bg-amber-50 border-amber-400 text-amber-600 dark:bg-amber-950/20 dark:border-amber-500 dark:text-amber-400 shadow-amber-100/30'
-                : 'bg-white border-slate-200 dark:bg-slate-900 dark:border-slate-800 text-slate-700 dark:text-slate-350 hover:bg-slate-50/50 dark:hover:bg-slate-800/50 shadow-slate-100/10'
-            }`}
-            title="Toggle Bulk Edit Mode"
-            style={{ width: '42px', height: '42px' }}
-          >
-            <CheckSquare className="w-5 h-5" strokeWidth={2} />
-          </button>
         </div>
         <div className="flex items-center gap-2.5">
           <button
@@ -246,6 +292,13 @@ export const CampaignsListView: React.FC<CampaignsListViewProps> = ({ onNavigate
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 text-indigo-600 dark:text-indigo-400 font-semibold rounded-lg text-xs transition-colors cursor-pointer"
                 >
                   <Copy className="w-3.5 h-3.5" /> Duplicate Copies
+                </button>
+
+                <button
+                  onClick={handleBulkDownload}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 text-emerald-600 dark:text-emerald-400 font-semibold rounded-lg text-xs transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download Selection
                 </button>
 
                 <div className="relative group">
@@ -317,7 +370,29 @@ export const CampaignsListView: React.FC<CampaignsListViewProps> = ({ onNavigate
                     />
                   </th>
                 )}
-                <th className="px-6 py-4">Title</th>
+                <th className="px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    <span>Title</span>
+                    <button
+                      onClick={() => {
+                        const nextMode = !isBulkModeActive;
+                        setIsBulkModeActive(nextMode);
+                        if (!nextMode) {
+                          setSelectedCampaignIds([]);
+                        }
+                      }}
+                      className={`inline-flex items-center justify-center p-1 rounded-md border transition-all cursor-pointer shadow-sm select-none ${
+                        isBulkModeActive
+                          ? 'bg-amber-50 border-amber-400 text-amber-600 dark:bg-amber-950/20 dark:border-amber-500 dark:text-amber-400 shadow-amber-100/30'
+                          : 'bg-white border-slate-200 dark:bg-slate-800 dark:border-slate-700 text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-700'
+                      }`}
+                      title="Toggle Bulk Edit Mode"
+                      style={{ width: '26px', height: '26px' }}
+                    >
+                      <CheckSquare className="w-4 h-4" strokeWidth={2} />
+                    </button>
+                  </div>
+                </th>
                 <th className="px-6 py-4">Category</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4">Filters</th>

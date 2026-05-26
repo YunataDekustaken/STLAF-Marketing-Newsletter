@@ -42,7 +42,8 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { collection, getDocs, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, auth, storage } from '../firebase';
 import { EmailCampaign, Subscriber, EmailTemplate } from '../types';
 import { toast } from 'react-hot-toast';
 import axios from 'axios';
@@ -300,24 +301,27 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.onchange = (e: any) => {
+    input.onchange = async (e: any) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      if (file.size > 3 * 1024 * 1024) {
-        toast.error("Embed image is too large (max 3MB for single inline image)");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const imgTag = `<img src="${reader.result}" alt="${file.name}" style="max-width: 100%; height: auto; border-radius: 12px; margin: 16px auto; display: block; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" />`;
+
+      const loadingId = toast.loading("Uploading image...");
+      try {
+        const storageRef = ref(storage, `campaign-images/${Date.now()}_${file.name}`);
+        const snapshot = await uploadBytes(storageRef, file);
+        const downloadUrl = await getDownloadURL(snapshot.ref);
+
+        const imgTag = `<img src="${downloadUrl}" alt="${file.name}" style="max-width: 100%; height: auto; border-radius: 12px; margin: 16px auto; display: block; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" />`;
         if (editorMode === 'visual') {
           executeCommand('insertHTML', imgTag);
         } else {
           setBody(prev => prev ? prev + '\n' + imgTag : imgTag);
         }
-        toast.success("Embedded inline image successfully!");
-      };
-      reader.readAsDataURL(file);
+        toast.success("Image embedded successfully!", { id: loadingId });
+      } catch (error) {
+        console.error("Error uploading image:", error);
+        toast.error("Failed to upload image.", { id: loadingId });
+      }
     };
     input.click();
     setActiveDropdown(null);
