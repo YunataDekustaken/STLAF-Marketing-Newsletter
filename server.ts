@@ -757,7 +757,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api-public-unsubscribe", async (req, res) => {
+  app.post("/api/public/unsubscribe", async (req, res) => {
     const { email, reason } = req.body;
     if (!email) {
       return res.status(400).json({ success: false, error: "Email is required" });

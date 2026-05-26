@@ -116,7 +116,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ mode }) => {
     const finalReason = reason === "Other (please specify)" ? `Other: ${otherReasonText}` : reason;
 
     try {
-      const resp = await axios.post('/api-public-unsubscribe', {
+      const resp = await axios.post('/api/public/unsubscribe', {
         email,
         reason: finalReason
       });
