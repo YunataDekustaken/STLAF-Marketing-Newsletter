@@ -82,3 +82,14 @@ export interface GmailConfig {
   tokenExpiry?: number;
 }
 
+export interface InAppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  userId?: string; // Optional: specify user targeted notification
+  read: boolean;
+  createdAt: string;
+}
+
+

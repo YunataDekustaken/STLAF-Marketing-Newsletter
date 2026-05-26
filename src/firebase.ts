@@ -21,3 +21,8 @@ export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 export const isFirebaseConfigured = isConfigured;
+
+// Using the same Firestore database for notifications
+export const notificationsDb = db;
+
+

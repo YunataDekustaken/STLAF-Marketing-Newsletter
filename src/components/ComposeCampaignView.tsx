@@ -47,6 +47,7 @@ import { db, auth, storage } from '../firebase';
 import { EmailCampaign, Subscriber, EmailTemplate } from '../types';
 import { toast } from 'react-hot-toast';
 import axios from 'axios';
+import { sendInAppNotification } from '../services/notificationService';
 
 interface ComposeCampaignViewProps {
   onNavigate: (view: any) => void;
@@ -396,6 +397,11 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
               console.error("Error updating handoff post:", err);
             }
           }
+          await sendInAppNotification({
+            title: "Campaign Scheduled 📅",
+            message: `The campaign "${title}" has been scheduled.`,
+            type: "info"
+          });
           toast.success("Campaign scheduled successfully!");
           onNavigate('campaigns');
         } else {
@@ -411,6 +417,11 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
               console.error("Error updating handoff post:", err);
             }
           }
+          await sendInAppNotification({
+            title: "Campaign Dispatched 🚀",
+            message: `The campaign "${title}" was successfully launched.`,
+            type: "success"
+          });
           toast.success("Launching bulk campaign send!");
           onNavigate('campaigns');
           // Call client API async
@@ -422,6 +433,11 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
           });
         }
       } else {
+        await sendInAppNotification({
+          title: "New Campaign Draft 📝",
+          message: `Campaign draft "${title}" was successfully saved.`,
+          type: "info"
+        });
         toast.success("Campaign draft saved!");
         onNavigate('campaigns');
       }

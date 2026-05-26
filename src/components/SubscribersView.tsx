@@ -27,6 +27,7 @@ import { db, auth } from '../firebase';
 import { Subscriber } from '../types';
 import { toast } from 'react-hot-toast';
 import Papa from 'papaparse';
+import { sendInAppNotification } from '../services/notificationService';
 import {
   ResponsiveContainer,
   BarChart,
@@ -177,6 +178,11 @@ export const SubscribersView: React.FC = () => {
           addedAt: new Date().toISOString(),
           addedBy: auth.currentUser?.email || 'admin'
         });
+        await sendInAppNotification({
+          title: "New Subscriber Added 👤",
+          message: `${subName || 'Anonymous'} (${subEmail}) registered successfully.`,
+          type: "success"
+        });
         toast.success("Subscriber added!");
       }
       setShowAddModal(false);
@@ -189,6 +195,11 @@ export const SubscribersView: React.FC = () => {
     const newStatus = sub.status === 'active' ? 'unsubscribed' : 'active';
     try {
       await setDoc(doc(db, 'subscribers', sub.id), { status: newStatus }, { merge: true });
+      await sendInAppNotification({
+        title: "Subscriber Status Updated 🔄",
+        message: `${sub.name || 'Anonymous'} is now set to ${newStatus}.`,
+        type: "info"
+      });
       toast.success(`Subscriber is now ${newStatus}`);
     } catch (err: any) {
       toast.error("Toggle status failed");

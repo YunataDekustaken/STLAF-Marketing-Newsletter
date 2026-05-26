@@ -45,6 +45,7 @@ import { HelpView } from './components/HelpView';
 import AuthScreen from './components/AuthScreen';
 import { PublicPortal } from './components/PublicPortal';
 import { LoadingScreen } from './components/LoadingScreen';
+import { NotificationDropdown } from './components/NotificationDropdown';
 
 function AppContent() {
   const isPublicUnsubscribe = window.location.pathname === '/unsubscribe' || window.location.search.includes('unsubscribe=');
@@ -712,9 +713,7 @@ function AppContent() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[10px] bg-slate-100 dark:bg-slate-850 px-2.5 py-1 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest rounded-lg border border-slate-200/50">
-              UTC Connection Safe
-            </span>
+            <NotificationDropdown />
           </div>
         </header>
 

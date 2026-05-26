@@ -37,7 +37,7 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
-      allow read: if isActive() && (resource == null || resource.data.userId == request.auth.uid);
+      allow read: if isActive() && (resource == null || !('userId' in resource.data) || resource.data.userId == null || resource.data.userId == request.auth.uid);
       allow write: if isActive();
     }
 
