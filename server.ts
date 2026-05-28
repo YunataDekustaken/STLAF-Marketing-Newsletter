@@ -379,7 +379,7 @@ async function startServer() {
         if (hostUrl.includes("run.app") && !hostUrl.startsWith("https://")) {
           hostUrl = hostUrl.replace("http://", "https://");
         }
-        const downloadUrl = `${hostUrl}/api/hosted-images/${safeFileName}`;
+        const downloadUrl = `${hostUrl}/api/hosted-images?id=${safeFileName}`;
         
         console.log(`[UPLOAD PROXY] Fallback successful! Serving via Firestore proxy: ${downloadUrl}`);
         res.json({ success: true, downloadUrl });
@@ -390,7 +390,44 @@ async function startServer() {
     }
   });
 
-  // Serve Fallback Hosted Images from Firestore
+  // Serve Fallback Hosted Images from Firestore (supporting both ?id= and /:id formats)
+  app.get("/api/hosted-images", async (req, res) => {
+    const id = req.query.id as string;
+    if (!id) {
+      return res.status(400).send("Parameter 'id' is required.");
+    }
+    try {
+      const baseUrl = getFirestoreUrl();
+      const apiKey = getApiKeyParam();
+      const url = `${baseUrl}/uploadedImages/${id}${apiKey}`;
+      const response = await axios.get(url);
+      const doc = fromFirestoreJSON(response.data);
+      if (!doc || !doc.base64) {
+        return res.status(404).send("Image not found");
+      }
+
+      let base64Pure = doc.base64;
+      let contentType = doc.fileType || "image/png";
+      
+      if (doc.base64.startsWith("data:")) {
+        const parts = doc.base64.split(";base64,");
+        if (parts.length > 1) {
+          const mimePart = parts[0];
+          base64Pure = parts[1];
+          contentType = mimePart.replace("data:", "").split(";")[0];
+        }
+      }
+
+      const buffer = Buffer.from(base64Pure, "base64");
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "public, max-age=31536000"); // Cache for 1 year
+      res.send(buffer);
+    } catch (err: any) {
+      console.error("[HOSTED IMAGES ERR] Could not serve page image:", err.message);
+      res.status(404).send("Image not found");
+    }
+  });
+
   app.get("/api/hosted-images/:id", async (req, res) => {
     const { id } = req.params;
     try {
