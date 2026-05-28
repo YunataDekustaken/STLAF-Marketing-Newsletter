@@ -3,6 +3,7 @@ import {
   Send, 
   Save, 
   Eye, 
+  EyeOff,
   Code, 
   Users, 
   Calendar, 
@@ -73,6 +74,17 @@ function parseTags(tagsVal: any): string[] {
   return [];
 }
 
+function formatTagDisplay(tag: string): string {
+  if (!tag) return "";
+  const trimmed = tag.trim();
+  return trimmed.split(/\s+/)
+    .map(word => {
+      if (word.toLowerCase() === "it") return "IT";
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
 export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavigate, initialCampaign }) => {
   const [title, setTitle] = useState(initialCampaign?.title || '');
   const [subject, setSubject] = useState(initialCampaign?.subject || '');
@@ -105,6 +117,7 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
   const [showAids, setShowAids] = useState(true);
   const [loading, setLoading] = useState(false);
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
+  const [showRecipientsList, setShowRecipientsList] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
 
   // Fullscreen and Resizing states
@@ -231,10 +244,27 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
           const s = doc.data() as Subscriber;
           const parsedTags = parseTags(s.tags);
           subList.push({ ...s, tags: parsedTags, id: doc.id });
-          parsedTags.forEach(t => tagsSet.add(t));
+          
+          // Only pull targeting tags from currently active subscribers
+          if (s.status === 'active') {
+            parsedTags.forEach(t => {
+              if (t && t.trim()) {
+                tagsSet.add(formatTagDisplay(t));
+              }
+            });
+          }
         });
+
+        // De-duplicate availableTags case-insensitively
+        const uniqueTags: string[] = [];
+        tagsSet.forEach(tag => {
+          if (!uniqueTags.some(t => t.toLowerCase() === tag.toLowerCase())) {
+            uniqueTags.push(tag);
+          }
+        });
+
         setSubscribers(subList);
-        setAvailableTags(Array.from(tagsSet));
+        setAvailableTags(uniqueTags);
 
         const tempSnapshot = await getDocs(collection(db, 'emailTemplates'));
         const tempList: EmailTemplate[] = [];
@@ -256,8 +286,8 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
   };
 
   const handleTagToggle = (tag: string) => {
-    if (recipientTags.includes(tag)) {
-      setRecipientTags(recipientTags.filter(t => t !== tag));
+    if (recipientTags.some(rt => rt.toLowerCase() === tag.toLowerCase())) {
+      setRecipientTags(recipientTags.filter(t => t.toLowerCase() !== tag.toLowerCase()));
     } else {
       setRecipientTags([...recipientTags, tag]);
     }
@@ -331,7 +361,7 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
   const activeFilteredSubscribers = subscribers.filter(s => {
     if (s.status !== 'active') return false;
     if (recipientTags.length === 0) return true; // All Active Subscribers
-    return s.tags?.some(t => recipientTags.includes(t));
+    return s.tags?.some(t => recipientTags.some(rt => rt.toLowerCase() === t.toLowerCase()));
   });
 
   const handleCancelGateway = async () => {
@@ -1266,7 +1296,7 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {availableTags.map(tag => {
-                      const selected = recipientTags.includes(tag);
+                      const selected = recipientTags.some(rt => rt.toLowerCase() === tag.toLowerCase());
                       return (
                         <button
                           key={tag}
@@ -1291,8 +1321,52 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
                   <p className="text-xs font-semibold text-slate-500">Active Target Group</p>
                   <p className="text-xs font-bold text-slate-900 dark:text-white">{activeFilteredSubscribers.length} Contacts</p>
                 </div>
-                <Info className="w-4 h-4 text-slate-400" />
+                {activeFilteredSubscribers.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowRecipientsList(!showRecipientsList)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 bg-amber-50 hover:bg-amber-100/70 dark:bg-amber-950/30 dark:hover:bg-amber-950/60 px-2.5 py-1.5 rounded-lg border border-amber-200/50 dark:border-amber-900/30 transition-all cursor-pointer shadow-sm select-none"
+                  >
+                    {showRecipientsList ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5" />
+                        <span>Hide Recipients</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>View Recipients</span>
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <Info className="w-4 h-4 text-slate-400 animate-pulse" />
+                )}
               </div>
+
+              {showRecipientsList && activeFilteredSubscribers.length > 0 ? (
+                <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/50">
+                  <p className="text-[10px] font-bold text-slate-400 dark:text-slate-505 uppercase tracking-wider">
+                    {recipientTags.length > 0 ? "Targeted Recipient Names:" : "All Active Recipients:"}
+                  </p>
+                  <div className="max-h-36 overflow-y-auto pr-1 space-y-1.5 scrollbar-thin">
+                    {activeFilteredSubscribers.map(sub => (
+                      <div key={sub.id} className="flex flex-col text-[11px] px-2.5 py-1.5 bg-slate-50/50 dark:bg-slate-950/30 rounded-lg border border-slate-100 dark:border-slate-800/30 hover:border-amber-200 dark:hover:border-amber-900/30 transition-colors">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 truncate" title={sub.name}>
+                          {sub.name}
+                        </span>
+                        <span className="text-[9px] text-slate-400 dark:text-slate-505 font-mono truncate" title={sub.email}>
+                          {sub.email}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : activeFilteredSubscribers.length === 0 ? (
+                <div className="text-center py-4 bg-slate-50/30 dark:bg-slate-950/10 rounded-lg border border-dashed border-slate-200 dark:border-slate-800">
+                  <p className="text-xs text-slate-400 italic">No active contacts match selection.</p>
+                </div>
+              ) : null}
             </div>
           </div>
 

@@ -1,173 +1,321 @@
-# Marketing Content Planner
+# Marketing Content Planner & Subscriber Portal
 
-A comprehensive social media content tracker with AI-powered caption generation and deliverable management. This application helps marketing teams plan, create, and publish content across various social platforms while tracking engagement metrics in real-time.
-
-## 🚀 Key Features
-
-- **Multi-View Project Tracking:** View content in List, Kanban, or Monthly Table formats.
-- **AI-Powered Content Creation:** Generate professional captions and visual ideas using Google's Gemini AI.
-- **Direct Meta Integration:** Publish and schedule posts directly to Facebook Pages and Instagram Business accounts.
-- **Social Media Hub:** Track real-time metrics (reactions, comments, shares) for published content.
-- **Governance & Approvals:** Roles-based access control with supervisor approval workflows for deletions and sensitive actions.
-- **Media Management:** integrated file uploads and previewing for social media deliverables.
-
-## 🛠️ Tech Stack
-
-- **Frontend:** React 19, Vite, Tailwind CSS, Framer Motion, Lucide React.
-- **Backend:** Node.js (Express), `tsx`.
-- **Database & Auth:** Firebase Firestore, Firebase Storage, Firebase Authentication.
-- **AI Engine:** Google Gemini AI (@google/genai).
-- **APIs:** Meta Graph API (Facebook & Instagram).
-
-## 📋 Setup & Installation
-
-### Prerequisites
-
-- Node.js (v18+)
-- A Firebase Project
-- Google AI Studio API Key (for Gemini)
-- Meta Business Account with Page Access Token (for Facebook/Instagram integration)
-
-### Configuration
-
-1. **Clone the repository:**
-   ```bash
-   git clone <repository-url>
-   cd marketing-content-planner
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Environment Variables:**
-   Create a `.env` file in the root directory and configure the following:
-   ```env
-   # Google Gemini API
-   GEMINI_API_KEY=your_gemini_api_key
-
-   # Meta / Facebook Integration
-   FACEBOOK_PAGE_ACCESS_TOKEN=your_page_access_token
-   FACEBOOK_PAGE_ID=your_page_id
-
-   # Firebase Configuration (Exposed to Client)
-   VITE_FIREBASE_API_KEY=...
-   VITE_FIREBASE_AUTH_DOMAIN=...
-   VITE_FIREBASE_PROJECT_ID=...
-   VITE_FIREBASE_STORAGE_BUCKET=...
-   VITE_FIREBASE_MESSAGING_SENDER_ID=...
-   VITE_FIREBASE_APP_ID=...
-   ```
-
-### Running the App
-
-- **Development Mode:** Starts the Express server with Vite middleware.
-  ```bash
-  npm run dev
-  ```
-- **Build for Production:**
-  ```bash
-  npm run build
-  ```
-- **Start Production Server:**
-  ```bash
-  npm start
-  ```
+A comprehensive, production-ready enterprise social media content planner and email marketing/newsletter subscriber portal. This platform features robust, visual multi-view planners, Google Gemini AI draft suggestion engines, native Meta (Facebook & Instagram Business) publishing proxies, and an authorized, transactional Gmail campaign system implementing GDPR-compliant secure Double Opt-In subscriber pipelines and detailed feedback auditing.
 
 ---
 
-## 📡 API Documentation
+## 🚀 Key Capability Modules
 
-The application includes a backend Express server that proxies requests to external APIs (Meta, etc.) to keep secrets secure.
+### 1. Unified Social Media Hub & Planner
+*   **Dynamic Views:** Manage deliverables across standard list views, drag-and-drop Kanban boards, or calendar timelines.
+*   **GenAI Amplification:** Write high-converting post copies, brainstorm graphic styles, or audit readability using Google Gemini AI integrations.
+*   **Page Automation:** Publish and schedule posts directly to Facebook Pages and Instagram accounts through secure, client-hidden proxy endpoints.
+*   **Real-time Analytics:** Track and consolidate engagement (likes, reacts, comment trees, and organic shares) dynamically.
 
-### Meta Publishing API
+### 2. GDPR-Compliant Subscriber Portal
+*   **Double Opt-In Verification:** A fully integrated transactional pipeline that requires target recipients to confirm clicks within a customizable 24-hour token expiration window before activation.
+*   **Granular Subscriber Segmentation:** Manage individual custom tags (e.g., *IT Intern*, *Newsletter*, *Customer Success*) to filter, target, or segment broadcasts cleanly.
+*   **Feedback Auditing & GDPR Opt-Out logs:** Comprehensive tracking allows users to catalog reasons (e.g., frequency, content mismatch, custom feedback) upon opt-out. Staff can filter, bulk reset, or permanently purge logs to satisfy absolute deletion standards.
 
-#### `POST /api/meta-post`
-Publishes content to Facebook and/or Instagram.
+---
 
-**Payload:**
+## 🛠️ Tech Stack & Dependencies
+
+### Frontend Core
+*   **Framework:** React 19 (running on standard Vite engine)
+*   **TypeScript:** Full schema-backed type configuration for Firestore records and Meta payloads.
+*   **Styling:** Tailwind CSS (utility-first, rich negative spacing, high contrast, amber/emerald theme accents).
+*   **Animations:** Framer Motion for highly fluid tab transitions, modal entries, and tag toggles.
+*   **Icons & Visuals:** Lucide React vector suite.
+
+### Backend & Service Endpoints
+*   **Node.js Server:** Express server configured with hot Vite serverless middleware bindings for development and stand-alone static folder distribution for production.
+*   **Production Build Engine:** bundled with Esbuild into unified standalone outputs.
+*   **Database & Storage:** Google Firebase Firestore & Authentication for team role authorization and permanent operational logs.
+*   **SMTP Proxy:** Google Gmail Oauth APIs for secure, authenticated broadcast campaigns.
+
+---
+
+## 📋 Quick Setup & Installation
+
+### Prerequisite Environment
+*   **Runtime:** Node.js (v18 or higher)
+*   **Database:** A Google Firebase Project running Firestore in native mode.
+*   **OAuth Application:** Google Cloud Platform developer console client ID & secret with `gmail.send` and `gmail.readonly` scopes configured.
+*   **Meta SDKs:** Facebook developer console token with Page management scopes.
+
+### 1. Project Initialization
+```bash
+# Clone the codebase
+git clone <your-repository-url>
+cd marketing-content-planner
+
+# Install dependencies from package.json
+npm install
+```
+
+### 2. Environment Variables Configuration
+Create a `.env` file in the root directory. You can copy format guidelines from `.env.example`:
+
+```env
+# Google Gemini Engine Secret
+GEMINI_API_KEY=AIzaSy...
+
+# Meta Business Proxy Configuration
+FACEBOOK_PAGE_ACCESS_TOKEN=EAAB...
+FACEBOOK_PAGE_ID=123456789...
+
+# Google Gmail OAuth Client Credentials
+GMAIL_CLIENT_ID=348...content.googleusercontent.com
+GMAIL_CLIENT_SECRET=GOCSPX-...
+GMAIL_REDIRECT_URI=https://your-domain.com/api/gmail/callback
+
+# Client-Exposed Web Firebase Settings (Used for active subscriber list syncing)
+VITE_FIREBASE_API_KEY=AIzaSy...
+VITE_FIREBASE_AUTH_DOMAIN=app-id.firebaseapp.com
+VITE_FIREBASE_DATABASE_ID=(default)
+VITE_FIREBASE_PROJECT_ID=app-id
+VITE_FIREBASE_STORAGE_BUCKET=app-id.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=987654321
+VITE_FIREBASE_APP_ID=1:223344...
+```
+
+### 3. Execution Commands
+```bash
+# Start in developmental hot-reload mode
+npm run dev
+
+# Compile standalone front + back assets for high performance
+npm run build
+
+# Boot secure standalone node server mapping dist folders
+npm start
+```
+
+---
+
+## 🗺️ System Workflow Diagrams
+
+### Module Architecture Workflow
+```mermaid
+graph TD
+    User([Staff Creator]) -->|1. Draft Post| Fe[React SPA Interface]
+    Fe -->|2. Generate Copies| AI[Gemini REST Interface]
+    Fe -->|3. Store Assets| FS[(Firebase Firestore)]
+    Fe -->|4. Request Publish| BE[Express server.ts API]
+    BE -->|5. Multi-channel dispatch| MetaProxy[Meta Graph API]
+    BE -->|6. Retrieve Callback| FS
+```
+
+### Subscriber Lifecycle & Double Opt-In Workflow
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Customer as Public User
+    participant App as Web Client / Portal
+    participant BE as Express API Backend
+    participant Gmail as Gmail OAuth Service
+    participant FS as Firebase Database
+
+    Customer->>App: Subscribes (Name + Email)
+    App->>BE: POST /api/public/subscribe
+    BE->>FS: Save sub with status="pending" + token + expiry
+    BE->>Gmail: Send Verification Link (token key)
+    Gmail-->>Customer: Double Opt-In Email delivered
+    Note over Customer: Verification URL valid for 24 hours
+    Customer->>App: Clicks "Verify Subscription"
+    App->>BE: GET /api/public/verify?token=XYZ&email=abc
+    alt Token matches & not expired
+        BE->>FS: Update status="active", remove token
+        BE-->>Customer: Redirect to Success Dashboard
+    else Token expired / mismatched
+        BE->>FS: Purge record (if expired)
+        BE-->>Customer: Redirect to Outdated Token Error
+    end
+```
+
+### Campaign Broadcast & Automation Scheduler Flow
+```mermaid
+graph TD
+    A[Cron Job / Background Interval: Each 60s] --> B{Gmail Configured & Active?}
+    B -->|No| C[Sleep / Idle]
+    B -->|Yes| D[Query Scheduled Campaigns in DB]
+    D --> E{Any Campaign scheduledAt <= Now?}
+    E -->|No| C
+    E -->|Yes| F[Set Campaign Status to "sending" in Firestore]
+    F --> G[Extract Selected Tag Filters]
+    G --> H[Fetch Active Verified Subscribers matching tags]
+    H --> I[Compile Body & Inject personal variables & Unsubscribe token]
+    I --> J[Encode MIME Multi-part with attachments]
+    J --> K[POST /users/me/messages/send on Gmail API]
+    K --> L[Update counts: Sent / Failed in DB]
+    L --> M{More recipients remaining?}
+    M -->|Yes| J
+    M -->|No| N[Mark Campaign Status as "sent" in Firestore]
+```
+
+---
+
+## 📡 Backend API Documentation
+
+### Gmail Authentication
+All actions below are proxies running server side to ensure complete secret safety.
+
+#### 1. Retrieve Authentication Consent URL
+Builds the required callback parameters dynamically to route credentials safely.
+*   **Endpoint:** `POST /api/gmail/auth-url`
+*   **Request Headers:** `Content-Type: application/json`
+*   **Request Payload:**
 ```json
 {
-  "message": "Caption text goes here",
-  "platforms": ["facebook", "instagram"],
-  "mediaUrls": ["data:image/jpeg;base64,..."],
-  "scheduleTime": "2024-12-01T10:00:00Z" (Optional)
+  "origin": "https://yourapp.example.com"
+}
+```
+*   **Example Response (Success):**
+```json
+{
+  "url": "https://accounts.google.com/o/oauth2/v2/auth?client_id=348...&redirect_uri=..."
 }
 ```
 
-**Response:**
+#### 2. Get Integration Status
+*   **Endpoint:** `GET /api/gmail/status`
+*   **Example Response (Connected):**
+```json
+{
+  "connected": true,
+  "authorizedEmail": "marketing-leads@organization.org"
+}
+```
+
+#### 3. Revoke / Disconnect Credentials
+*   **Endpoint:** `DELETE /api/gmail/disconnect`
+*   **Example Response:**
+```json
+{
+  "success": true
+}
+```
+
+---
+
+### Campaign and Newsletter Delivery
+Integrate attachment formats, rich template builders, and custom placeholders.
+
+#### 1. Instant Campaign Send Dispatch
+*   **Endpoint:** `POST /api/gmail/send-bulk`
+*   **Request Payload:**
+```json
+{
+  "campaignId": "cmp_fall_release_001",
+  "recipients": [
+    { "name": "Sarah Connor", "email": "sconnor@cyberdyne.info" },
+    { "name": "John Doe", "email": "jdoe@gmail.com" }
+  ]
+}
+```
+*   **Example Response:**
+```json
+{
+  "success": true,
+  "message": "Campaign sending started in background."
+}
+```
+
+---
+
+### Public GDPR Subscriber Administration
+
+#### 1. Start Subscription (Double Opt-In registration)
+*   **Endpoint:** `POST /api/public/subscribe`
+*   **Request Payload:**
+```json
+{
+  "name": "Jane Doe",
+  "email": "jane.doe@example.com",
+  "tags": ["Tech Interns", "Weekly Feature Digest"]
+}
+```
+*   **Example Response (Success):**
+```json
+{
+  "success": true,
+  "emailSent": true,
+  "verificationNeeded": true,
+  "devVerificationUrl": "https://yourdomain.com/api/public/verify?token=3j8dxh...&email=jane.doe@example.com"
+}
+```
+
+#### 2. Verify Token & Activate
+*   **Endpoint:** `GET /api/public/verify`
+*   **Query Parameters:**
+```text
+?token=3j8dxh...&email=jane.doe@example.com
+```
+*   **Response:** Redirects client browser to `/subscribe?verified=success&email=jane.doe@example.com` on matching successful records.
+
+#### 3. Safe Unsubscribe (Granular Reason cataloging)
+*   **Endpoint:** `POST /api/public/unsubscribe`
+*   **Request Payload:**
+```json
+{
+  "email": "jane.doe@example.com",
+  "reason": "Sending frequency was too high. I prefer monthly summaries."
+}
+```
+*   **Example Response:**
+```json
+{
+  "success": true,
+  "found": true
+}
+```
+
+---
+
+### Meta (Facebook / Instagram) Publishing
+
+#### 1. Publish Multi-channel Live Post
+*   **Endpoint:** `POST /api/meta-post`
+*   **Request Payload:**
+```json
+{
+  "message": "Take a look at our brand next-gen design setup! Let us know what you think.",
+  "platforms": ["facebook", "instagram"],
+  "mediaUrls": ["data:image/png;base64,iVBORw0KGgoAAAANSUh..."]
+}
+```
+*   **Example Response:**
 ```json
 {
   "success": true,
   "results": {
-    "facebook": "post_id_123",
-    "instagram": "media_id_456"
+    "facebook": "post_178414002345672",
+    "instagram": "media_179213009876214"
   }
 }
 ```
 
-### Metrics & Management
-
-#### `GET /api/meta-post/:postId/metrics?platform=facebook`
-Retrieves engagement data for a specific post.
-
-**Success Response:**
+#### 2. Get Live Engagement Analytics
+*   **Endpoint:** `GET /api/meta-post/:postId/metrics?platform=facebook`
+*   **Example Response (Success):**
 ```json
 {
   "success": true,
   "metrics": {
-    "reactions": 120,
-    "comments": 45,
-    "shares": 12
+    "reactions": 852,
+    "comments": 143,
+    "shares": 54
   }
 }
 ```
 
-#### `DELETE /api/facebook-post/:postId`
-Deletes a published post from the Facebook Page.
-
 ---
 
-## 🗺️ System Workflow
+## 🔒 Governance & Operational Safety
 
-### Content Lifecycle Flow Diagram
-
-```mermaid
-graph TD
-    A[User Creation] -->|Store Data| B(Firestore)
-    B --> C{Content Ready?}
-    C -->|Yes| D[Draft Phase]
-    D --> E[Gemini AI Caption Generation]
-    E --> F[Review / Admin Approval]
-    F -->|Approved| G[Publishing Trigger]
-    G --> H[Express API /api/meta-post]
-    H --> I[Meta Graph API]
-    I -->|Success| J[Live Post]
-    J --> K[Metrics Syncing]
-    K -->|Periodic Update| B
-```
-
-### Module Responsibilities
-
-| Module | Responsibility |
-| :--- | :--- |
-| **AdminView** | System settings, user role management, and global platform configuration. |
-| **SocialHubView** | Central dashboard for published assets, history, and aggregate performance insights. |
-| **ListView/Kanban** | Operations-focused views for tracking the production status of content pieces. |
-| **Gemini Service** | Handles prompt engineering and communication with Google’s GenAI models. |
-| **Meta Proxy** | Server-side handlers for Meta Graph API to ensure secure token usage. |
-
----
-
-## 🔒 Security & Governance
-
-- **Token Security:** Meta Page Access Tokens are never exposed to the client-side. All publishing actions go through the server-side proxy.
-- **Soft Deletion:** Post deletions go through an "Approval Requested" state if governed by administrative rules.
-- **Role Permissions:** Distinction between `marketing_creative` (creation) and `marketing_supervisor` (administrative control and final deletion).
-
----
-
-## 📄 License
-
-This project is licensed under the Apache-2.0 License.
+1.  **Strict Token Enclosure:** Sensitive administrative tokens (GCP Credentials, Meta Business Graph Keys) are locked inside the node environment server-side. Client scripts only interact via mapped proxy layers.
+2.  **Robust Feedback Administration:** Subscribers page has dedicated actions for managers to:
+    *   *Clear single feedback details* (resets individual logs back to "No reason specified").
+    *   *Bulk clean filtered list records* (completely purge matching unsubscribe metrics or reset reasons).
+3.  **Automatic expired pending removal:** A background routine purges inactive subscriptions after 24 hours to minimize database tables bloat and respect security hygiene standards.
