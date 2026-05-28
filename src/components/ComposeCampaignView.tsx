@@ -337,22 +337,48 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
       if (!file) return;
 
       const loadingId = toast.loading("Uploading image...");
-      try {
-        const storageRef = ref(storage, `campaign-images/${Date.now()}_${file.name}`);
-        const snapshot = await uploadBytes(storageRef, file);
-        const downloadUrl = await getDownloadURL(snapshot.ref);
+      
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const fileData = reader.result as string;
+          const response = await fetch("/api/upload", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              fileData,
+              fileName: file.name,
+              fileType: file.type
+            })
+          });
 
-        const imgTag = `<img src="${downloadUrl}" alt="${file.name}" style="max-width: 100%; height: auto; border-radius: 12px; margin: 16px auto; display: block; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" />`;
-        if (editorMode === 'visual') {
-          executeCommand('insertHTML', imgTag);
-        } else {
-          setBody(prev => prev ? prev + '\n' + imgTag : imgTag);
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || "Server failed to process upload");
+          }
+
+          const data = await response.json();
+          const downloadUrl = data.downloadUrl;
+
+          const imgTag = `<img src="${downloadUrl}" alt="${file.name}" style="max-width: 100%; height: auto; border-radius: 12px; margin: 16px auto; display: block; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" />`;
+          
+          if (editorMode === 'visual') {
+            executeCommand('insertHTML', imgTag);
+          } else {
+            setBody(prev => prev ? prev + '\n' + imgTag : imgTag);
+          }
+          toast.success("Image embedded successfully!", { id: loadingId });
+        } catch (error: any) {
+          console.error("Error uploading image:", error);
+          toast.error(`Failed to upload: ${error.message || "Please check server config"}`, { id: loadingId });
         }
-        toast.success("Image embedded successfully!", { id: loadingId });
-      } catch (error) {
-        console.error("Error uploading image:", error);
-        toast.error("Failed to upload image.", { id: loadingId });
-      }
+      };
+      reader.onerror = () => {
+        toast.error("Failed to read image file.", { id: loadingId });
+      };
+      reader.readAsDataURL(file);
     };
     input.click();
     setActiveDropdown(null);

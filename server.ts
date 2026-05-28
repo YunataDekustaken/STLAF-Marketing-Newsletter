@@ -312,6 +312,119 @@ async function startServer() {
       .replace(/=+$/, '');
   }
 
+  // Image Upload Proxy with Firestore Fallback Hosted Storage
+  app.post("/api/upload", async (req, res) => {
+    const { fileData, fileName, fileType } = req.body;
+    if (!fileData) {
+      return res.status(400).json({ error: "Missing fileData (base64 string)." });
+    }
+
+    try {
+      const bucket = process.env.VITE_FIREBASE_STORAGE_BUCKET;
+      if (!bucket) {
+        throw new Error("VITE_FIREBASE_STORAGE_BUCKET environment variable is not configured on the server.");
+      }
+
+      // Convert base64 to buffer
+      let base64Pure = fileData;
+      if (fileData.startsWith("data:")) {
+        const parts = fileData.split(";base64,");
+        if (parts.length > 1) {
+          base64Pure = parts[1];
+        }
+      }
+      const buffer = Buffer.from(base64Pure, "base64");
+
+      // Upload to Firebase Storage via REST API
+      const safeFileName = `campaign-images/${Date.now()}_${fileName.replace(/[^a-zA-Z0-9.]/g, "_")}`;
+      const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodeURIComponent(safeFileName)}`;
+
+      console.log(`[UPLOAD PROXY] Uploading ${safeFileName} to Firebase Storage: ${uploadUrl}`);
+      
+      const response = await axios.post(uploadUrl, buffer, {
+        headers: {
+          "Content-Type": fileType || "image/png",
+        }
+      });
+
+      const { name: uploadedName, downloadTokens } = response.data;
+      const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(uploadedName)}?alt=media&token=${downloadTokens || ""}`;
+
+      console.log(`[UPLOAD PROXY] Successfully uploaded to Storage: ${downloadUrl}`);
+      res.json({ success: true, downloadUrl });
+    } catch (err: any) {
+      console.error("[UPLOAD PROXY ERR] Failed to upload to Firebase Storage:", err.response?.data || err.message);
+      
+      // Since Firebase Storage might have CORS or permission limits, use Firestore-based fallback
+      try {
+        console.log("[UPLOAD PROXY] Attempting fallback to Firestore storage...");
+        const safeFileName = `${Date.now()}_${fileName.replace(/[^a-zA-Z0-9.]/g, "_")}`;
+        
+        const imageDoc = {
+          fileName: fileName,
+          fileType: fileType || "image/png",
+          base64: fileData, // full data URI
+          uploadedAt: new Date().toISOString()
+        };
+
+        const baseUrl = getFirestoreUrl();
+        const apiKey = getApiKeyParam();
+        const url = `${baseUrl}/uploadedImages/${safeFileName}${apiKey}`;
+        
+        await axios.patch(url, toFirestoreJSON(imageDoc));
+        
+        const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+        const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
+        let hostUrl = `${protocol}://${host}`;
+        if (hostUrl.includes("run.app") && !hostUrl.startsWith("https://")) {
+          hostUrl = hostUrl.replace("http://", "https://");
+        }
+        const downloadUrl = `${hostUrl}/api/hosted-images/${safeFileName}`;
+        
+        console.log(`[UPLOAD PROXY] Fallback successful! Serving via Firestore proxy: ${downloadUrl}`);
+        res.json({ success: true, downloadUrl });
+      } catch (fallbackErr: any) {
+        console.error("[UPLOAD PROXY FALLBACK ERR] Failed fallback to Firestore:", fallbackErr.response?.data || fallbackErr.message);
+        res.status(500).json({ error: `Upload failed: ${err.message}` });
+      }
+    }
+  });
+
+  // Serve Fallback Hosted Images from Firestore
+  app.get("/api/hosted-images/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      const baseUrl = getFirestoreUrl();
+      const apiKey = getApiKeyParam();
+      const url = `${baseUrl}/uploadedImages/${id}${apiKey}`;
+      const response = await axios.get(url);
+      const doc = fromFirestoreJSON(response.data);
+      if (!doc || !doc.base64) {
+        return res.status(404).send("Image not found");
+      }
+
+      let base64Pure = doc.base64;
+      let contentType = doc.fileType || "image/png";
+      
+      if (doc.base64.startsWith("data:")) {
+        const parts = doc.base64.split(";base64,");
+        if (parts.length > 1) {
+          const mimePart = parts[0];
+          base64Pure = parts[1];
+          contentType = mimePart.replace("data:", "").split(";")[0];
+        }
+      }
+
+      const buffer = Buffer.from(base64Pure, "base64");
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "public, max-age=31536000"); // Cache for 1 year
+      res.send(buffer);
+    } catch (err: any) {
+      console.error("[HOSTED IMAGES ERR] Could not serve page image:", err.message);
+      res.status(404).send("Image not found");
+    }
+  });
+
   // Gmail API Endpoints
 
   app.post("/api/gmail/auth-url", (req, res) => {
