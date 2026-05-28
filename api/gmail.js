@@ -308,6 +308,16 @@ export default async function handler(req, res) {
   if (route === 'status' && req.method === 'GET') {
     try {
       const config = await getGmailConfig();
+      
+      // Trigger lazy-cron checks asynchronously (non-blocking)
+      const protocol = req.headers['x-forwarded-proto'] || 'https';
+      const host = req.headers.host;
+      if (host) {
+        axios.get(`${protocol}://${host}/api/cron`).catch(e => {
+          console.error("Lazy-cron trigger failed:", e.message);
+        });
+      }
+
       return res.status(200).json({
         connected: !!config.connected,
         authorizedEmail: config.authorizedEmail || null

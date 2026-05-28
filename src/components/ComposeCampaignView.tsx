@@ -414,6 +414,11 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
       return;
     }
 
+    if (isSend && sendType === 'schedule' && !scheduledAt) {
+      toast.error("Please choose a target date & time to schedule this campaign.");
+      return;
+    }
+
     if (isSend && activeFilteredSubscribers.length === 0) {
       toast.error("There are no active subscribers in the selected filter.");
       return;
@@ -429,7 +434,7 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
         status: isSend ? (sendType === 'schedule' ? 'scheduled' : 'sending') : 'draft',
         type,
         recipientTags,
-        scheduledAt: sendType === 'schedule' ? scheduledAt : '',
+        scheduledAt: sendType === 'schedule' ? (scheduledAt ? new Date(scheduledAt).toISOString() : '') : '',
         sentCount: 0,
         failedCount: 0,
         createdBy: auth.currentUser?.email || 'System',

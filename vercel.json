@@ -4,6 +4,7 @@
   "rewrites": [
     { "source": "/api/upload", "destination": "/api/upload.js" },
     { "source": "/api/hosted-images", "destination": "/api/hosted-images.js" },
+    { "source": "/api/cron", "destination": "/api/cron.js" },
     { "source": "/api/facebook-post/(.*)", "destination": "/api/facebook-post.js?postId=$1" },
     { "source": "/api/gmail/(.*)", "destination": "/api/gmail.js?route=$1" },
     { "source": "/api/public/subscribe", "destination": "/api/public-subscribe.js" },

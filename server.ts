@@ -312,6 +312,17 @@ async function startServer() {
       .replace(/=+$/, '');
   }
 
+  // Vercel-compatible & client-triggerable cron route
+  app.get("/api/cron", async (req, res) => {
+    try {
+      await checkAndSendScheduledCampaigns();
+      res.json({ success: true, message: "Campaign check and schedules processed successfully." });
+    } catch (err: any) {
+      console.error("[CRON ROUTE ERR]", err.message);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // Image Upload Proxy with Firestore Fallback Hosted Storage
   app.post("/api/upload", async (req, res) => {
     const { fileData, fileName, fileType } = req.body;
@@ -572,6 +583,10 @@ async function startServer() {
   app.get("/api/gmail/status", async (req, res) => {
     try {
       const config = await getGmailConfig();
+      // Lazy cron trigger on status refresh check
+      checkAndSendScheduledCampaigns().catch(e => {
+        console.error("Local lazy-cron background hook failed:", e.message);
+      });
       res.json({
         connected: !!config.connected,
         authorizedEmail: config.authorizedEmail || null
