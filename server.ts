@@ -72,8 +72,8 @@ async function startServer() {
         obj[key] = Number(vo.integerValue);
       } else if (vo.stringValue !== undefined) {
         obj[key] = vo.stringValue;
-      } else if (vo.arrayValue && vo.arrayValue.values) {
-        obj[key] = vo.arrayValue.values.map((v: any) => v.booleanValue ?? v.doubleValue ?? v.integerValue ?? v.stringValue ?? '');
+      } else if (vo.arrayValue) {
+        obj[key] = vo.arrayValue.values ? vo.arrayValue.values.map((v: any) => v.booleanValue ?? v.doubleValue ?? v.integerValue ?? v.stringValue ?? '') : [];
       } else {
         obj[key] = JSON.stringify(vo);
       }

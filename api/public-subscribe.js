@@ -50,7 +50,7 @@ function fromFirestoreJSON(doc) {
     else if (vo.doubleValue !== undefined) obj[key] = Number(vo.doubleValue);
     else if (vo.integerValue !== undefined) obj[key] = Number(vo.integerValue);
     else if (vo.stringValue !== undefined) obj[key] = vo.stringValue;
-    else if (vo.arrayValue && vo.arrayValue.values) obj[key] = vo.arrayValue.values.map(v => v.booleanValue ?? v.doubleValue ?? v.integerValue ?? v.stringValue ?? '');
+    else if (vo.arrayValue) obj[key] = vo.arrayValue.values ? vo.arrayValue.values.map(v => v.booleanValue ?? v.doubleValue ?? v.integerValue ?? v.stringValue ?? '') : [];
     else obj[key] = JSON.stringify(vo);
   }
   return obj;
