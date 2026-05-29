@@ -22,6 +22,48 @@ import { collection, onSnapshot, query, limit, orderBy } from 'firebase/firestor
 import { db } from '../firebase';
 import { EmailCampaign, Subscriber } from '../types';
 import axios from 'axios';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend
+} from 'recharts';
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0]?.payload;
+    return (
+      <div className="p-3 bg-slate-900 border border-slate-750 text-white rounded-lg shadow-xl text-xs space-y-1.5 font-sans">
+        <p className="font-bold border-b border-slate-800 pb-1 text-slate-200">{data?.fullName || label}</p>
+        <div className="space-y-1 text-[11px]">
+          <div className="flex items-center justify-between gap-5 text-emerald-400">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+              Sent:
+            </span>
+            <span className="font-bold">{payload[0]?.value}</span>
+          </div>
+          <div className="flex items-center justify-between gap-5 text-rose-450 text-rose-400">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span>
+              Failed:
+            </span>
+            <span className="font-bold">{payload[1]?.value}</span>
+          </div>
+          <div className="border-t border-slate-800 pt-1 mt-1 text-slate-400 flex items-center justify-between gap-5">
+            <span>Total Recipients:</span>
+            <span className="font-bold font-mono">{data?.total}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
 
 interface DashboardViewProps {
   onNavigate: (view: any) => void;
@@ -96,6 +138,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, userRo
 
   const totalCampaigns = campaigns.length;
   const sentCampaigns = campaigns.filter(c => c.status === 'sent' || c.status === 'sending').length;
+
+  // Filter and map recent campaigns for the performance chart (excluding drafts to show actual sending metrics)
+  const performanceCampaigns = campaigns
+    .filter(c => c.status !== 'draft')
+    .slice(0, 6)
+    .reverse()
+    .map(c => ({
+      name: c.title.length > 15 ? c.title.substring(0, 12) + '...' : c.title,
+      fullName: c.title,
+      sent: c.sentCount || 0,
+      failed: c.failedCount || 0,
+      total: (c.sentCount || 0) + (c.failedCount || 0)
+    }));
 
   const stats = [
     {
@@ -193,6 +248,80 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, userRo
           );
         })}
       </div>
+
+      {/* Campaign Performance Chart Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="p-6 rounded-xl border border-slate-205 dark:border-slate-805 bg-white dark:bg-slate-900 shadow-sm space-y-4"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800/60 pb-4">
+          <div className="space-y-1">
+            <h2 className="font-bold text-slate-950 dark:text-white tracking-tight flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-amber-500 animate-pulse" />
+              Campaign Performance
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Comparative analysis of sent versus failed delivery counts for recent campaigns
+            </p>
+          </div>
+          
+          {/* Custom micro-legend */}
+          {performanceCampaigns.length > 0 && (
+            <div className="flex items-center gap-4 text-[11px] font-bold">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 bg-emerald-500 rounded-[3px]"></span>
+                <span className="text-slate-600 dark:text-slate-300">Sent ({performanceCampaigns.reduce((sum, item) => sum + item.sent, 0)})</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 bg-rose-500 rounded-[3px]"></span>
+                <span className="text-slate-600 dark:text-slate-300">Failed ({performanceCampaigns.reduce((sum, item) => sum + item.failed, 0)})</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {performanceCampaigns.length === 0 ? (
+          <div className="h-[240px] flex flex-col items-center justify-center text-slate-450 dark:text-slate-500 text-sm space-y-3">
+            <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-full border border-slate-100 dark:border-slate-800/80">
+              <TrendingUp className="w-8 h-8 text-slate-350 dark:text-slate-650" />
+            </div>
+            <div className="text-center">
+              <p className="font-semibold text-slate-705 dark:text-slate-300 text-xs">No Performance Metrics Available</p>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 max-w-sm mx-auto">
+                Comparative success rates will display here as campaigns are dispatched and delivered to your subscriber base.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="h-[240px] w-full text-xs font-semibold pt-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={performanceCampaigns}
+                margin={{ top: 10, right: 10, left: -25, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.08)" />
+                <XAxis 
+                  dataKey="name" 
+                  tick={{ fill: '#94a3b8', fontSize: 9 }} 
+                  axisLine={{ stroke: 'rgba(148, 163, 184, 0.12)' }}
+                  tickLine={false}
+                />
+                <YAxis 
+                  tick={{ fill: '#94a3b8', fontSize: 9 }} 
+                  axisLine={{ stroke: 'rgba(148, 163, 184, 0.12)' }}
+                  tickLine={false}
+                  allowDecimals={false}
+                />
+                <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148, 163, 184, 0.04)' }} />
+                <Bar dataKey="sent" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="failed" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </motion.div>
 
       {/* Main Split details */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
