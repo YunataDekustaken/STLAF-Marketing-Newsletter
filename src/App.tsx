@@ -168,10 +168,18 @@ function AppContent() {
   useEffect(() => {
     if (!showLoading && user && profile && profile.status === 'active') {
       const triggerCron = async () => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
         try {
-          await fetch('/api/cron');
-        } catch (err) {
-          console.error('[CRON HEARTBEAT ERROR]:', err);
+          await fetch('/api/cron', { signal: controller.signal });
+        } catch (err: any) {
+          if (err.name === 'AbortError') {
+            console.log('[CRON HEARTBEAT]: Request timed out or aborted (this is expected for long-running cron cycles)');
+          } else {
+            console.warn('[CRON HEARTBEAT INFO]: Heartbeat request skipped or completed with status:', err?.message || err);
+          }
+        } finally {
+          clearTimeout(timeoutId);
         }
       };
 
