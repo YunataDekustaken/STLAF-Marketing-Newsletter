@@ -318,17 +318,92 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  const debugLogs = [];
+  const addLog = (msg) => {
+    const timestamp = new Date().toISOString();
+    debugLogs.push(`[${timestamp}] ${msg}`);
+    console.log(`[VERCEL CRON DEBUG] ${msg}`);
+  };
+
+  addLog("Vercel Cron Triggered.");
+
+  const envs = {
+    VITE_FIREBASE_PROJECT_ID: process.env.VITE_FIREBASE_PROJECT_ID ? `${process.env.VITE_FIREBASE_PROJECT_ID.substring(0, 4)}***` : "MISSING",
+    VITE_FIREBASE_API_KEY: process.env.VITE_FIREBASE_API_KEY ? "CONFIGURED (hidden)" : "MISSING",
+    GMAIL_CLIENT_ID: process.env.GMAIL_CLIENT_ID ? `${process.env.GMAIL_CLIENT_ID.substring(0, 10)}***` : "MISSING",
+    GMAIL_CLIENT_SECRET: process.env.GMAIL_CLIENT_SECRET ? "CONFIGURED (hidden)" : "MISSING",
+    GMAIL_REDIRECT_URI: process.env.GMAIL_REDIRECT_URI || "MISSING"
+  };
+
+  const report = {
+    success: false,
+    currentTime: new Date().toISOString(),
+    currentTimeMs: Date.now(),
+    environmentVariables: envs,
+    debugLogs,
+    gmailConfig: null,
+    campaignsChecked: 0,
+    triggeredCampaigns: [],
+    details: []
+  };
+
+  // Validate critical env variables
+  if (!process.env.VITE_FIREBASE_PROJECT_ID || !process.env.VITE_FIREBASE_API_KEY) {
+    addLog("CRITICAL ERROR: Firebase Config is missing in Vercel Env variables!");
+    return res.status(500).json({
+      ...report,
+      message: "Vercel environment variables VITE_FIREBASE_PROJECT_ID or VITE_FIREBASE_API_KEY are not configured in Vercel dashboard."
+    });
+  }
+
   try {
-    const config = await getGmailConfig();
-    if (!config || !config.connected) {
-      return res.status(200).json({ success: false, message: "Gmail is not connected yet." });
+    addLog("Fetching Gmail config from Firestore...");
+    const configUrl = `${getFirestoreUrl()}/settings/gmail_config${getApiKeyParam()}`;
+    let config;
+    try {
+      const resp = await axios.get(configUrl);
+      config = fromFirestoreJSON(resp.data);
+      addLog(`Gmail info retrieved successfully. Connected status in DB: ${config?.connected}`);
+      report.gmailConfig = {
+        connected: !!config?.connected,
+        authorizedEmail: config?.authorizedEmail || null,
+        tokenExpiry: config?.tokenExpiry || null,
+        hasRefreshToken: !!config?.refreshToken
+      };
+    } catch (dbErr) {
+      addLog(`Database read for gmail_config failed: ${dbErr.response?.data?.error?.message || dbErr.message}`);
+      return res.status(200).json({
+        ...report,
+        message: `Database error retrieving Gmail settings: ${dbErr.message}. Ensure VITE_FIREBASE_API_KEY and VITE_FIREBASE_PROJECT_ID are correct.`,
+        errorDetails: dbErr.response?.data || null
+      });
     }
 
-    const campaignsUrl = getFirestoreRestUrl("emailCampaigns", "pageSize=300");
-    const campaignsResp = await axios.get(campaignsUrl);
-    const documents = campaignsResp.data?.documents || [];
+    if (!config || !config.connected) {
+      addLog("Gmail is not connected in authorization settings yet.");
+      return res.status(200).json({
+        ...report,
+        message: "Gmail is not connected yet in settings. Access token cannot be acquired."
+      });
+    }
 
-    const triggered = [];
+    addLog("Fetching email campaigns from Firestore...");
+    const campaignsUrl = getFirestoreRestUrl("emailCampaigns", "pageSize=300");
+    let campaignsResp;
+    try {
+      campaignsResp = await axios.get(campaignsUrl);
+    } catch (campErr) {
+      addLog(`Failed to fetch campaigns: ${campErr.response?.data?.error?.message || campErr.message}`);
+      return res.status(500).json({
+        ...report,
+        message: `Firestore REST API error fetching email campaigns: ${campErr.message}`,
+        errorDetails: campErr.response?.data || null
+      });
+    }
+
+    const documents = campaignsResp.data?.documents || [];
+    report.campaignsChecked = documents.length;
+    addLog(`Found ${documents.length} campaigns in database.`);
 
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers.host || 'stlaf-marketing-newsletter.vercel.app';
@@ -338,32 +413,64 @@ export default async function handler(req, res) {
       const id = doc.name.split("/").pop();
       if (!id) continue;
       const campaign = fromFirestoreJSON(doc);
-      if (!campaign || activeScheduledSends.has(id)) continue;
+      if (!campaign) continue;
 
-      if (campaign.status === "scheduled" && campaign.scheduledAt) {
-        // Parse time representing ISO string
-        const schedTime = new Date(campaign.scheduledAt).getTime();
-        const nowTime = Date.now();
+      const campaignInfo = {
+        id,
+        title: campaign.title,
+        status: campaign.status,
+        scheduledAt: campaign.scheduledAt || null,
+        reason: ""
+      };
 
-        if (!isNaN(schedTime) && schedTime <= nowTime) {
-          console.log(`[VERCEL CRON] Triggering scheduled campaign: "${campaign.title}" (${id})`);
-          activeScheduledSends.add(id);
-          triggered.push({ id, title: campaign.title });
+      if (campaign.status === "scheduled") {
+        if (!campaign.scheduledAt) {
+          campaignInfo.reason = "Ignored: Status is 'scheduled' but scheduledAt timestamp is empty.";
+          addLog(`Campaign "${campaign.title}" (${id}) ignored: scheduledAt is empty.`);
+        } else {
+          const schedTime = new Date(campaign.scheduledAt).getTime();
+          const nowTime = Date.now();
 
-          // Non-blocking loop for Vercel context: executed in-handler
-          await executeCronSending(id, campaign, config, hostUrl);
+          if (isNaN(schedTime)) {
+            campaignInfo.reason = `Ignored: Invalid scheduled date format: "${campaign.scheduledAt}"`;
+            addLog(`Campaign "${campaign.title}" (${id}) ignored: invalid scheduled time format.`);
+          } else if (schedTime > nowTime) {
+            const timeDiffSec = Math.round((schedTime - nowTime) / 1000);
+            campaignInfo.reason = `Waiting: Scheduled for ${campaign.scheduledAt} (triggers in ${timeDiffSec} seconds).`;
+            addLog(`Campaign "${campaign.title}" (${id}) is in the future. Scheduled: ${campaign.scheduledAt}. current: ${report.currentTime}`);
+          } else if (activeScheduledSends.has(id)) {
+            campaignInfo.reason = "Ignored: Already processing sending lock.";
+            addLog(`Campaign "${campaign.title}" (${id}) skipped: sending lock already active.`);
+          } else {
+            campaignInfo.reason = "Triggering sending cycle!";
+            addLog(`TRIGGERED: "${campaign.title}" (${id}) has reached its time!`);
+            activeScheduledSends.add(id);
+            report.triggeredCampaigns.push({ id, title: campaign.title });
+            
+            try {
+              await executeCronSending(id, campaign, config, hostUrl);
+              campaignInfo.reason += " Sending cycle finished successfully.";
+              addLog(`Sent successfully: "${campaign.title}"`);
+            } catch (sendErr) {
+              campaignInfo.reason += ` Sending cycle error: ${sendErr.message}`;
+              addLog(`Sending failed for "${campaign.title}": ${sendErr.message}`);
+            }
+          }
         }
+      } else {
+        campaignInfo.reason = `Ignored: status is '${campaign.status}' (must be 'scheduled').`;
       }
+      report.details.push(campaignInfo);
     }
 
-    return res.status(200).json({
-      success: true,
-      processedCount: triggered.length,
-      runs: triggered
+    report.success = true;
+    return res.status(200).json(report);
+  } catch (globalErr) {
+    addLog(`Global Cron error: ${globalErr.message}`);
+    return res.status(500).json({
+      ...report,
+      error: globalErr.message
     });
-  } catch (err) {
-    console.error("[VERCEL CRON ERR]", err.message);
-    return res.status(500).json({ success: false, error: err.message });
   }
 }
 
