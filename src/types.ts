@@ -37,6 +37,7 @@ export interface EmailCampaign {
   createdBy: string;
   createdAt: string;
   attachmentsJson?: string;
+  importedPostId?: string;
 }
 
 export interface Subscriber {

@@ -133,6 +133,30 @@ async function updateCampaignCount(campaignId, status, sentCount, failedCount) {
   }
 }
 
+async function updateImportedPostStatus(postId, mailStatus) {
+  if (!postId) return;
+  const baseUrl = getFirestoreUrl();
+  const apiKey = getApiKeyParam();
+  const url = `${baseUrl}/posts/${postId}${apiKey}`;
+  try {
+    const currentResp = await axios.get(url);
+    const currentData = fromFirestoreJSON(currentResp.data) || {};
+    const updatedData = {
+      ...currentData,
+      mailStatus,
+      mailSentTime: new Date().toISOString()
+    };
+    await axios.patch(url, toFirestoreJSON(updatedData));
+    console.log(`[CSR SCHEDULE] Successfully updated handoff post ${postId} mailStatus directly to ${mailStatus}`);
+  } catch (err) {
+    if (err.response?.status === 404) {
+      console.log(`[CSR SCHEDULE] Handoff post ${postId} not found in Firestore (possibly archived).`);
+    } else {
+      console.error(`[CSR SCHEDULE] Error updating post ${postId}:`, err.response?.data || err.message);
+    }
+  }
+}
+
 async function getOrRefreshAccessToken(gmailConfig) {
   if (!gmailConfig || !gmailConfig.connected) {
     throw new Error("Gmail is not connected.");
@@ -458,6 +482,9 @@ async function executeCronSending(campaignId, campaign, config, hostUrl) {
     }
 
     await updateCampaignCount(campaignId, 'sent', sentCount, failedCount);
+    if (campaign && campaign.importedPostId) {
+      await updateImportedPostStatus(campaign.importedPostId, 'authorized');
+    }
     console.log(`[VERCEL CRON] Completed campaign "${campaign.title}" successfully.`);
   } catch (err) {
     console.error(`[VERCEL CRON ERR] Campaign sending failed:`, err.message);

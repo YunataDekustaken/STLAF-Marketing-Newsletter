@@ -439,7 +439,8 @@ export const ComposeCampaignView: React.FC<ComposeCampaignViewProps> = ({ onNavi
         failedCount: 0,
         createdBy: auth.currentUser?.email || 'System',
         createdAt: new Date().toISOString(),
-        attachmentsJson: JSON.stringify(attachments)
+        attachmentsJson: JSON.stringify(attachments),
+        importedPostId: importedPostId || ''
       };
 
       const docRef = await addDoc(collection(db, 'emailCampaigns'), newCampaign);

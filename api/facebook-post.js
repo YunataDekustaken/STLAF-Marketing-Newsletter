@@ -1,6 +1,27 @@
 import axios from 'axios';
 import FormData from 'form-data';
 
+function getUnixTimestampInSeconds(scheduleTime) {
+  if (!scheduleTime) return null;
+  if (typeof scheduleTime === 'string') {
+    const parsedNum = Number(scheduleTime);
+    if (!isNaN(parsedNum)) {
+      scheduleTime = parsedNum;
+    }
+  }
+  if (typeof scheduleTime === 'number') {
+    if (scheduleTime > 9999999999) {
+      return Math.floor(scheduleTime / 1000);
+    }
+    return scheduleTime;
+  }
+  const parsedDate = new Date(scheduleTime);
+  if (!isNaN(parsedDate.getTime())) {
+    return Math.floor(parsedDate.getTime() / 1000);
+  }
+  return null;
+}
+
 export default async function handler(req, res) {
   const PAGE_ACCESS_TOKEN = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
   const PAGE_ID = process.env.FACEBOOK_PAGE_ID;
@@ -109,11 +130,8 @@ export default async function handler(req, res) {
         );
       }
 
-      if (scheduleTime) {
-        const unixTime =
-          typeof scheduleTime === 'number'
-            ? scheduleTime
-            : Math.floor(new Date(scheduleTime).getTime() / 1000);
+      const unixTime = getUnixTimestampInSeconds(scheduleTime);
+      if (unixTime) {
         finalParams.append('published', 'false');
         finalParams.append('scheduled_publish_time', unixTime.toString());
       }

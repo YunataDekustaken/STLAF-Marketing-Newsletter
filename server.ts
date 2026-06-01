@@ -161,6 +161,30 @@ async function startServer() {
     }
   }
 
+  async function updateImportedPostStatus(postId: string, mailStatus: string) {
+    if (!postId) return;
+    const baseUrl = getFirestoreUrl();
+    const apiKey = getApiKeyParam();
+    const url = `${baseUrl}/posts/${postId}${apiKey}`;
+    try {
+      const currentResp = await axios.get(url);
+      const currentData = fromFirestoreJSON(currentResp.data) || {};
+      const updatedData = {
+        ...currentData,
+        mailStatus,
+        mailSentTime: new Date().toISOString()
+      };
+      await axios.patch(url, toFirestoreJSON(updatedData));
+      console.log(`[LOCAL SCHEDULE] Successfully updated handoff post ${postId} mailStatus directly to ${mailStatus}`);
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        console.log(`[LOCAL SCHEDULE] Handoff post ${postId} not found in Firestore (possibly archived).`);
+      } else {
+        console.error(`[LOCAL SCHEDULE] Error updating post ${postId}:`, err.response?.data || err.message);
+      }
+    }
+  }
+
   async function getOrRefreshAccessToken(gmailConfig: any) {
     if (!gmailConfig || !gmailConfig.connected) {
       throw new Error("Gmail is not connected.");
@@ -1162,6 +1186,9 @@ async function startServer() {
       }
 
       await updateCampaignCount(campaignId, 'sent', sentCount, failedCount);
+      if (campaign && campaign.importedPostId) {
+        await updateImportedPostStatus(campaign.importedPostId, 'authorized');
+      }
       console.log(`[SCHEDULER] Scheduled campaign "${campaign.title}" successfully completed! Sent: ${sentCount}, Failed: ${failedCount}`);
     } catch (err: any) {
       console.error(`[SCHEDULER] Error sending scheduled campaign ${campaignId}:`, err.message);
