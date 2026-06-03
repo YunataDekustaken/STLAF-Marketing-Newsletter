@@ -408,6 +408,24 @@ function getFirestoreRestUrl(collectionPath, extraParams = "") {
   return url;
 }
 
+async function fetchFirestoreCollection(collectionPath) {
+  let allDocuments = [];
+  let pageToken = "";
+  let loopCount = 0;
+  
+  do {
+    const extraParams = `pageSize=100${pageToken ? `&pageToken=${pageToken}` : ""}`;
+    const url = getFirestoreRestUrl(collectionPath, extraParams);
+    const resp = await axios.get(url);
+    const docs = resp.data?.documents || [];
+    allDocuments = [...allDocuments, ...docs];
+    pageToken = resp.data?.nextPageToken || "";
+    loopCount++;
+  } while (pageToken && loopCount < 30);
+  
+  return allDocuments;
+}
+
 // ── SCHEDULER LOGIC ──────────────────────────────────────────────────────────
 
 const activeScheduledSends = new Set();
@@ -492,10 +510,9 @@ export default async function handler(req, res) {
     }
 
     addLog("Fetching email campaigns from Firestore...");
-    const campaignsUrl = getFirestoreRestUrl("emailCampaigns", "pageSize=300");
-    let campaignsResp;
+    let documents = [];
     try {
-      campaignsResp = await axios.get(campaignsUrl);
+      documents = await fetchFirestoreCollection("emailCampaigns");
     } catch (campErr) {
       addLog(`Failed to fetch campaigns: ${campErr.response?.data?.error?.message || campErr.message}`);
       return res.status(500).json({
@@ -504,8 +521,6 @@ export default async function handler(req, res) {
         errorDetails: campErr.response?.data || null
       });
     }
-
-    const documents = campaignsResp.data?.documents || [];
     report.campaignsChecked = documents.length;
     addLog(`Found ${documents.length} campaigns in database.`);
 
@@ -608,9 +623,13 @@ async function executeCronSending(campaignId, campaign, config, hostUrl) {
     }
 
     // Get subscribers
-    const subUrl = getFirestoreRestUrl("subscribers", "pageSize=300");
-    const subResp = await axios.get(subUrl);
-    const allDocs = subResp.data?.documents || [];
+    let allDocs = [];
+    try {
+      allDocs = await fetchFirestoreCollection("subscribers");
+    } catch (subErr) {
+      addLog(`Failed to fetch subscribers for campaign: ${subErr.message}`);
+      throw subErr;
+    }
     const subscribers = allDocs.map(d => {
       const sId = d.name.split("/").pop();
       return { id: sId, ...fromFirestoreJSON(d) };

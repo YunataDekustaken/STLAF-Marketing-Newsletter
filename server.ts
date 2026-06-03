@@ -607,10 +607,9 @@ async function startServer() {
       }
 
       addLog("Fetching email campaigns from Firestore...");
-      const campaignsUrl = getFirestoreRestUrl("emailCampaigns", "pageSize=300");
-      let campaignsResp;
+      let documents: any[] = [];
       try {
-        campaignsResp = await axios.get(campaignsUrl);
+        documents = await fetchFirestoreCollection("emailCampaigns");
       } catch (campErr: any) {
         addLog(`Failed to fetch campaigns: ${campErr.response?.data?.error?.message || campErr.message}`);
         return res.status(500).json({
@@ -619,8 +618,6 @@ async function startServer() {
           errorDetails: campErr.response?.data || null
         });
       }
-
-      const documents = campaignsResp.data?.documents || [];
       report.campaignsChecked = documents.length;
       addLog(`Found ${documents.length} campaigns in database.`);
 
@@ -679,6 +676,9 @@ async function startServer() {
               report.triggeredCampaigns.push({ id, title: campaign.title });
               
               try {
+                // Mark as sending in DB immediately to prevent duplicate runs
+                await updateCampaignCount(id, "sending", 0, 0);
+
                 // Execute sending and await it to prevent background throttling in serverless
                 await runScheduledCampaignSending(id, campaign, config);
                 campaignInfo.reason += " Sending cycle finished successfully.";
@@ -1126,9 +1126,7 @@ async function startServer() {
 
     try {
       // 1. Fetch all subscribers to see if email already exists
-      const subUrl = getFirestoreRestUrl("subscribers", "pageSize=300");
-      const subResp = await axios.get(subUrl);
-      const allDocs = subResp.data?.documents || [];
+      const allDocs = await fetchFirestoreCollection("subscribers");
       const subscribers = allDocs.map((d: any) => {
         const sId = d.name.split("/").pop();
         return { id: sId, ...fromFirestoreJSON(d) };
@@ -1261,9 +1259,7 @@ async function startServer() {
 
     try {
       // 1. Fetch matching subscriber
-      const subUrl = getFirestoreRestUrl("subscribers", "pageSize=300");
-      const subResp = await axios.get(subUrl);
-      const allDocs = subResp.data?.documents || [];
+      const allDocs = await fetchFirestoreCollection("subscribers");
       const subscribers = allDocs.map((d: any) => {
         const sId = d.name.split("/").pop();
         return { id: sId, ...fromFirestoreJSON(d) };
@@ -1324,9 +1320,7 @@ async function startServer() {
 
     try {
       // 1. Fetch subscribers to locate match
-      const subUrl = getFirestoreRestUrl("subscribers", "pageSize=300");
-      const subResp = await axios.get(subUrl);
-      const allDocs = subResp.data?.documents || [];
+      const allDocs = await fetchFirestoreCollection("subscribers");
       const subscribers = allDocs.map((d: any) => {
         const sId = d.name.split("/").pop();
         return { id: sId, ...fromFirestoreJSON(d) };
@@ -1440,26 +1434,43 @@ async function startServer() {
     return url;
   }
 
+  async function fetchFirestoreCollection(collectionPath: string): Promise<any[]> {
+    let allDocuments: any[] = [];
+    let pageToken = "";
+    let loopCount = 0;
+    
+    do {
+      const extraParams = `pageSize=100${pageToken ? `&pageToken=${pageToken}` : ""}`;
+      const url = getFirestoreRestUrl(collectionPath, extraParams);
+      const resp = await axios.get(url);
+      const docs = resp.data?.documents || [];
+      allDocuments = [...allDocuments, ...docs];
+      pageToken = resp.data?.nextPageToken || "";
+      loopCount++;
+    } while (pageToken && loopCount < 30);
+    
+    return allDocuments;
+  }
+
   async function checkAndSendScheduledCampaigns() {
     const config = await getGmailConfig();
     if (!config || !config.connected) {
       return; // Gmail is not connected yet
     }
 
-    const campaignsUrl = getFirestoreRestUrl("emailCampaigns", "pageSize=300");
-    let response;
+    let documents: any[];
     try {
-      response = await axios.get(campaignsUrl);
+      documents = await fetchFirestoreCollection("emailCampaigns");
     } catch (err: any) {
       console.error("[SCHEDULER] Error fetching campaigns for checklist:", err.message);
       return;
     }
 
-    if (!response.data || !response.data.documents) {
+    if (documents.length === 0) {
       return;
     }
 
-    for (const doc of response.data.documents) {
+    for (const doc of documents) {
       const id = doc.name.split("/").pop();
       if (!id) continue;
       const campaign = fromFirestoreJSON(doc);
@@ -1503,9 +1514,7 @@ async function startServer() {
       }
 
       // Fetch subscribers from Firestore REST API
-      const subUrl = getFirestoreRestUrl("subscribers", "pageSize=300");
-      const subResp = await axios.get(subUrl);
-      const allDocs = subResp.data?.documents || [];
+      const allDocs = await fetchFirestoreCollection("subscribers");
       const subscribers = allDocs.map((d: any) => {
         const sId = d.name.split("/").pop();
         return { id: sId, ...fromFirestoreJSON(d) };
@@ -1621,9 +1630,7 @@ async function startServer() {
 
   async function cleanExpiredPendingSubscribers() {
     try {
-      const subUrl = getFirestoreRestUrl("subscribers", "pageSize=300");
-      const subResp = await axios.get(subUrl);
-      const allDocs = subResp.data?.documents || [];
+      const allDocs = await fetchFirestoreCollection("subscribers");
       const subscribers = allDocs.map((d: any) => {
         const sId = d.name.split("/").pop();
         return { id: sId, ...fromFirestoreJSON(d) };
