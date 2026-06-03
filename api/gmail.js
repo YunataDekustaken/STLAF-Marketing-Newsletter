@@ -116,18 +116,30 @@ async function createEmailLog(campaignId, recipientEmail, details) {
 async function updateCampaignCount(campaignId, status, sentCount, failedCount) {
   const baseUrl = getFirestoreUrl();
   const apiKey = getApiKeyParam();
-  const url = `${baseUrl}/emailCampaigns/${campaignId}${apiKey}`;
+  
+  const updateMaskParams = [
+    'updateMask.fieldPaths=status',
+    'updateMask.fieldPaths=sentCount',
+    'updateMask.fieldPaths=failedCount'
+  ];
+  
+  const fields = {
+    status: { stringValue: status },
+    sentCount: { doubleValue: Number(sentCount) },
+    failedCount: { doubleValue: Number(failedCount) }
+  };
+
+  if (status === 'sent') {
+    updateMaskParams.push('updateMask.fieldPaths=sentAt');
+    fields.sentAt = { stringValue: new Date().toISOString() };
+  }
+
+  const keyParam = apiKey ? apiKey.replace('?', '') + '&' : '';
+  const url = `${baseUrl}/emailCampaigns/${campaignId}?${keyParam}${updateMaskParams.join('&')}`;
+  const docData = { fields };
+
   try {
-    const currentResp = await axios.get(url);
-    const currentData = fromFirestoreJSON(currentResp.data) || {};
-    const updatedData = {
-      ...currentData,
-      status,
-      sentCount,
-      failedCount,
-      sentAt: status === 'sent' ? new Date().toISOString() : (currentData.sentAt || '')
-    };
-    await axios.patch(url, toFirestoreJSON(updatedData));
+    await axios.patch(url, docData);
   } catch (err) {
     console.error(`Error updating emailCampaigns/${campaignId}:`, err.response?.data || err.message);
   }
