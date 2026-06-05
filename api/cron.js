@@ -498,6 +498,32 @@ async function fetchFirestoreCollection(collectionPath, forceRefresh = false) {
   return allDocuments;
 }
 
+async function fetchScheduledCampaigns() {
+  const url = `${getFirestoreUrl()}:runQuery${getApiKeyParam()}`;
+  const payload = {
+    structuredQuery: {
+      from: [{ collectionId: "emailCampaigns" }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: "status" },
+          op: "EQUAL",
+          value: { stringValue: "scheduled" }
+        }
+      }
+    }
+  };
+  try {
+    const resp = await axios.post(url, payload);
+    const docs = (resp.data || [])
+      .map((item) => item.document)
+      .filter((doc) => doc && doc.name);
+    return docs;
+  } catch (err) {
+    console.warn("[SCHEDULER] Failed to query scheduled campaigns via runQuery, falling back to full collection scan:", err.message);
+    return fetchFirestoreCollection("emailCampaigns");
+  }
+}
+
 // ── SCHEDULER LOGIC ──────────────────────────────────────────────────────────
 
 const activeScheduledSends = new Set();
@@ -585,7 +611,13 @@ export default async function handler(req, res) {
     addLog(`Fetching email campaigns from Firestore (forceRefresh: ${forceRefresh})...`);
     let documents = [];
     try {
-      documents = await fetchFirestoreCollection("emailCampaigns", forceRefresh);
+      if (forceCampaignId) {
+        const docUrl = getFirestoreRestUrl(`emailCampaigns/${forceCampaignId}`);
+        const docResp = await axios.get(docUrl);
+        documents = [docResp.data];
+      } else {
+        documents = await fetchScheduledCampaigns();
+      }
     } catch (campErr) {
       addLog(`Failed to fetch campaigns: ${campErr.response?.data?.error?.message || campErr.message}`);
       return res.status(500).json({

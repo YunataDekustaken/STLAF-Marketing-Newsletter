@@ -661,7 +661,13 @@ async function startServer() {
       addLog(`Fetching email campaigns from Firestore (forceRefresh: ${forceRefresh})...`);
       let documents: any[] = [];
       try {
-        documents = await fetchFirestoreCollection("emailCampaigns", forceRefresh);
+        if (forceCampaignId) {
+          const docUrl = getFirestoreRestUrl(`emailCampaigns/${forceCampaignId}`);
+          const docResp = await axios.get(docUrl);
+          documents = [docResp.data];
+        } else {
+          documents = await fetchScheduledCampaigns();
+        }
       } catch (campErr: any) {
         addLog(`Failed to fetch campaigns: ${campErr.response?.data?.error?.message || campErr.message}`);
         return res.status(500).json({
@@ -1525,6 +1531,58 @@ async function startServer() {
     return allDocuments;
   }
 
+  async function fetchScheduledCampaigns(): Promise<any[]> {
+    const url = `${getFirestoreUrl()}:runQuery${getApiKeyParam()}`;
+    const payload = {
+      structuredQuery: {
+        from: [{ collectionId: "emailCampaigns" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "status" },
+            op: "EQUAL",
+            value: { stringValue: "scheduled" }
+          }
+        }
+      }
+    };
+    try {
+      const resp = await axios.post(url, payload);
+      const docs = (resp.data || [])
+        .map((item: any) => item.document)
+        .filter((doc: any) => doc && doc.name);
+      return docs;
+    } catch (err: any) {
+      console.warn("[SCHEDULER] Failed to query scheduled campaigns via runQuery, falling back to full collection scan:", err.message);
+      return fetchFirestoreCollection("emailCampaigns");
+    }
+  }
+
+  async function fetchPendingSubscribers(): Promise<any[]> {
+    const url = `${getFirestoreUrl()}:runQuery${getApiKeyParam()}`;
+    const payload = {
+      structuredQuery: {
+        from: [{ collectionId: "subscribers" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "status" },
+            op: "EQUAL",
+            value: { stringValue: "pending" }
+          }
+        }
+      }
+    };
+    try {
+      const resp = await axios.post(url, payload);
+      const docs = (resp.data || [])
+        .map((item: any) => item.document)
+        .filter((doc: any) => doc && doc.name);
+      return docs;
+    } catch (err: any) {
+      console.warn("[CLEANER] Failed to query pending subscribers via runQuery, falling back to full collection scan:", err.message);
+      return fetchFirestoreCollection("subscribers");
+    }
+  }
+
   async function checkAndSendScheduledCampaigns() {
     const config = await getGmailConfig();
     if (!config || !config.connected) {
@@ -1533,7 +1591,7 @@ async function startServer() {
 
     let documents: any[];
     try {
-      documents = await fetchFirestoreCollection("emailCampaigns");
+      documents = await fetchScheduledCampaigns();
     } catch (err: any) {
       console.error("[SCHEDULER] Error fetching campaigns for checklist:", err.message);
       return;
@@ -1703,7 +1761,7 @@ async function startServer() {
 
   async function cleanExpiredPendingSubscribers() {
     try {
-      const allDocs = await fetchFirestoreCollection("subscribers");
+      const allDocs = await fetchPendingSubscribers();
       const subscribers = allDocs.map((d: any) => {
         const sId = d.name.split("/").pop();
         return { id: sId, ...fromFirestoreJSON(d) };
